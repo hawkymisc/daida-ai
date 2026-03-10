@@ -9,29 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from daida_ai.lib.talk_script import read_notes
-from daida_ai.lib.tts_engine import get_engine
-
-
-async def _synthesize_all(
-    notes: list[str],
-    output_dir: Path,
-    engine_name: str,
-    voice: str | None,
-) -> list[Path]:
-    engine = get_engine(engine_name)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    results = []
-
-    for i, note in enumerate(notes):
-        if not note.strip():
-            results.append(None)
-            continue
-        output_path = output_dir / f"slide_{i:03d}.mp3"
-        await engine.synthesize(note, output_path, voice=voice)
-        results.append(output_path)
-        print(f"  Slide {i}: {output_path}")
-
-    return results
+from daida_ai.lib.synthesize import synthesize_notes
 
 
 def main():
@@ -55,9 +33,13 @@ def main():
     non_empty = sum(1 for n in notes if n.strip())
     print(f"Synthesizing {non_empty} slides with {args.engine}...")
 
-    asyncio.run(
-        _synthesize_all(notes, args.output_dir, args.engine, args.voice)
+    results = asyncio.run(
+        synthesize_notes(
+            notes, args.output_dir, engine_name=args.engine, voice=args.voice
+        )
     )
+    generated = sum(1 for r in results if r is not None)
+    print(f"Generated {generated} audio files.")
     print("Done.")
 
 

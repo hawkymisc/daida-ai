@@ -31,7 +31,7 @@ LT登壇を代打してくれる Claude Code Agent Skill。
 - [Claude Code](https://claude.ai/code) がインストール済みであること
 - （音声合成に VOICEVOX を使う場合）[VOICEVOX Engine](https://voicevox.hiroshiba.jp/) が `http://localhost:50021` で起動していること
 
-### 方法A: このリポジトリをそのまま使う（最もシンプル）
+### セットアップ手順
 
 ```bash
 git clone https://github.com/hawkymisc/daida-ai.git
@@ -41,25 +41,7 @@ bash .claude/skills/daida-ai/scripts/setup.sh
 
 `daida-ai/` を Claude Code のプロジェクトルートとして開けば、`.claude/skills/daida-ai/SKILL.md` が自動検出されてスキルが有効になる。
 
-### 方法B: 既存プロジェクトに組み込む
-
-スクリプトは `daida_ai` Python パッケージに依存するため、**リポジトリ本体ごとクローン**してから Python パッケージをインストールし、スキルディレクトリを登録する必要がある。
-
-```bash
-# 1. リポジトリを永続的な場所にクローン
-git clone https://github.com/hawkymisc/daida-ai.git ~/.local/share/daida-ai
-
-# 2. daida_ai パッケージをプロジェクトの venv にインストール
-#    （先にプロジェクトの venv を activate しておく）
-pip install "~/.local/share/daida-ai[voicevox]"
-
-# 3. スキルディレクトリをプロジェクトに登録
-mkdir -p /path/to/your/project/.claude/skills
-cp -r ~/.local/share/daida-ai/.claude/skills/daida-ai \
-    /path/to/your/project/.claude/skills/
-```
-
-> **ポイント**: `setup.sh` は `pyproject.toml` のある場所を `PROJECT_ROOT` として自動検出するため、方法Aでない場合は `pip install` で直接インストールする。
+> **別プロジェクトへの組み込みについて**: `setup.sh` はリポジトリルートに `pyproject.toml` があることを前提とするため、スキルディレクトリだけを別プロジェクトにコピーしても動作しない。現時点ではリポジトリをそのまま使う構成を推奨。
 
 ---
 

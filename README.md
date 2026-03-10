@@ -31,39 +31,28 @@ LT登壇を代打してくれる Claude Code Agent Skill。
 - [Claude Code](https://claude.ai/code) がインストール済みであること
 - （音声合成に VOICEVOX を使う場合）[VOICEVOX Engine](https://voicevox.hiroshiba.jp/) が `http://localhost:50021` で起動していること
 
-### 手順
-
-**1. リポジトリをクローンする**
-
-Claude Code の Skill として認識させるには、`~/.claude/skills/` 以下に配置するか、プロジェクト内の `.claude/skills/` に置く必要がある。
-
-```bash
-# プロジェクト内に配置する場合（推奨）
-cd /path/to/your/project
-git clone https://github.com/hawkymisc/daida-ai.git .claude/skills/daida-ai-repo
-
-# または、グローバルに使いたい場合
-git clone https://github.com/hawkymisc/daida-ai.git ~/.claude/skills/daida-ai-repo
-```
-
-> **ポイント**: Claude Code は `.claude/skills/<name>/SKILL.md` を自動検出してスキルとして登録する。
-
-**2. Python依存パッケージをインストールする**
-
-```bash
-cd .claude/skills/daida-ai-repo   # または ~/.claude/skills/daida-ai-repo
-bash .claude/skills/daida-ai/scripts/setup.sh
-```
-
-setup.sh は `.venv/` を作成し、必要なパッケージ（python-pptx, edge-tts, pydub 等）をインストールする。
-
-### このリポジトリ自体をプロジェクトとして使う場合
-
-リポジトリのルートで作業する場合はセットアップがシンプル:
+### 方法A: このリポジトリをそのまま使う（最もシンプル）
 
 ```bash
 git clone https://github.com/hawkymisc/daida-ai.git
 cd daida-ai
+bash .claude/skills/daida-ai/scripts/setup.sh
+```
+
+`daida-ai/` を Claude Code のプロジェクトルートとして開けば、`.claude/skills/daida-ai/SKILL.md` が自動検出されてスキルが有効になる。
+
+### 方法B: 既存プロジェクトに組み込む
+
+Claude Code は `.claude/skills/<name>/SKILL.md` を検索する。
+このリポジトリの `.claude/skills/daida-ai/` ディレクトリをそのままコピーする。
+
+```bash
+# 一時ディレクトリにクローンしてスキルディレクトリだけコピー
+git clone https://github.com/hawkymisc/daida-ai.git /tmp/daida-ai
+cp -r /tmp/daida-ai/.claude/skills/daida-ai /path/to/your/project/.claude/skills/
+
+# セットアップ（コピー先のプロジェクトルートで実行）
+cd /path/to/your/project
 bash .claude/skills/daida-ai/scripts/setup.sh
 ```
 

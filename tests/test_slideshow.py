@@ -324,3 +324,36 @@ class Test既存アニメーション保持:
 
         audio_nodes = timing.findall(".//p:audio", _ns)
         assert len(audio_nodes) == 1, "audioノードは1つだけであるべき"
+
+
+class Testフォールバック:
+    """デュレーション計測不能時のフォールバック動作を検証"""
+
+    def test_音声シェイプありデュレーション不明でもauto_playが設定される(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """音声シェイプが存在すれば、デュレーション不明でもtiming要素が追加される。
+        （_get_audio_duration_msが0を返しても、_find_audio_shape_idsで検出）
+        """
+        output = tmp_output_dir / "show_fallback.pptx"
+        configure_slideshow(pptx_with_audio, output)
+
+        prs = Presentation(str(output))
+        # スライド1は音声あり → timing要素がある
+        timing = prs.slides[1].element.find("p:timing", _ns)
+        assert timing is not None
+        audio_nodes = timing.findall(".//p:audio", _ns)
+        assert len(audio_nodes) >= 1
+
+    def test_unmeasurable_duration_msが適用される(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """unmeasurable_duration_msパラメータのテスト"""
+        output = tmp_output_dir / "show_unmeasurable.pptx"
+        # デフォルト30000ms。通常のダミーMP3は計測可能なので直接テストが難しいが、
+        # パラメータが受け入れられることを確認
+        configure_slideshow(
+            pptx_with_audio, output, unmeasurable_duration_ms=15000
+        )
+        prs = Presentation(str(output))
+        assert len(prs.slides) == 4

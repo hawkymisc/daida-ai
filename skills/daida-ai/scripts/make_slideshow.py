@@ -32,6 +32,12 @@ def main():
         default=1000,
         help="音声再生後の余白（ミリ秒、デフォルト1000）",
     )
+    parser.add_argument(
+        "--unmeasurable-duration",
+        type=int,
+        default=30000,
+        help="デュレーション計測不能時のフォールバック（ミリ秒、デフォルト30000）",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -43,6 +49,7 @@ def main():
         args.output,
         silent_duration_ms=args.silent_duration,
         audio_buffer_ms=args.audio_buffer,
+        unmeasurable_duration_ms=args.unmeasurable_duration,
     )
     print(f"Slideshow configured: {args.output}")
 

@@ -33,12 +33,16 @@ _MPEG2_L3_BITRATE = {
 }
 
 
+_DEFAULT_UNMEASURABLE_DURATION_MS = 30000
+
+
 def configure_slideshow(
     input_path: Path,
     output_path: Path,
     *,
     silent_duration_ms: int = 3000,
     audio_buffer_ms: int = 1000,
+    unmeasurable_duration_ms: int = _DEFAULT_UNMEASURABLE_DURATION_MS,
 ) -> None:
     """PPTXにスライドショー自動再生設定を追加する。
 
@@ -47,14 +51,20 @@ def configure_slideshow(
         output_path: 出力PPTXファイルパス
         silent_duration_ms: 音声なしスライドの表示時間（ミリ秒）
         audio_buffer_ms: 音声付きスライドの再生完了後の余白（ミリ秒）
+        unmeasurable_duration_ms: デュレーション計測不能時のフォールバック（ミリ秒）
     """
     prs = Presentation(str(input_path))
 
     for slide in prs.slides:
+        has_audio_shapes = bool(_find_audio_shape_ids(slide))
         audio_duration = _get_audio_duration_ms(slide)
 
-        if audio_duration > 0:
-            advance_ms = audio_duration + audio_buffer_ms
+        if has_audio_shapes:
+            if audio_duration > 0:
+                advance_ms = audio_duration + audio_buffer_ms
+            else:
+                # 外部リンク/非MP3など計測不能 → フォールバック
+                advance_ms = unmeasurable_duration_ms + audio_buffer_ms
             _add_auto_play_animation(slide)
         else:
             advance_ms = silent_duration_ms
@@ -98,7 +108,7 @@ def _estimate_mp3_duration_ms(data: bytes) -> int:
     """MP3バイナリからデュレーションをミリ秒で推定する。
 
     pydub依存を避け、ファイルサイズとビットレートから概算する。
-    精度は実用上十分（±数秒）。
+    MP3フレームヘッダが見つからない場合（AAC/WAV等）は0を返す。
     """
     if len(data) < 10:
         return 0
@@ -133,9 +143,8 @@ def _estimate_mp3_duration_ms(data: bytes) -> int:
             return max(int(duration_s * 1000), 1)
         offset += 1
 
-    # フレームヘッダが見つからない場合、64kbps仮定で概算（MPEG-2寄り）
-    duration_s = (len(data) * 8) / (64 * 1000)
-    return max(int(duration_s * 1000), 1)
+    # MP3フレームヘッダが見つからない（AAC/WAV等）→ 計測不能
+    return 0
 
 
 def _set_auto_advance(slide, advance_ms: int) -> None:

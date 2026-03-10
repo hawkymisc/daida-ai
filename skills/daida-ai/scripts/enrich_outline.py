@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # プロジェクトルートをパスに追加
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from daida_ai.lib.slide_spec import validate_slide_spec, save_slide_spec
 

@@ -1,0 +1,11 @@
+{
+  "name": "daida-ai",
+  "description": "LTプレゼン自動生成 — テーマからスライド・音声ナレーション付きPPTXまで一括対応",
+  "version": "0.1.0",
+  "author": {
+    "name": "hawkymisc"
+  },
+  "repository": "https://github.com/hawkymisc/daida-ai",
+  "license": "MIT",
+  "keywords": ["presentation", "pptx", "tts", "lightning-talk", "slides"]
+}

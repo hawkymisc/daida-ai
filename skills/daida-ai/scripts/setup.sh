@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 VENV_DIR="$PROJECT_ROOT/.venv"
 
 echo "=== daida-ai setup ==="
@@ -17,7 +17,7 @@ fi
 # Activate and install
 echo "Installing dependencies..."
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-"$VENV_DIR/bin/pip" install --quiet -e "$PROJECT_ROOT[dev,voicevox]"
+"$VENV_DIR/bin/pip" install --quiet -e "$PROJECT_ROOT[voicevox]"
 
 echo "=== Setup complete ==="
 echo "Activate with: source $VENV_DIR/bin/activate"

@@ -160,6 +160,20 @@ def create_template(name: str, colors: dict) -> Path:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, colors["bg_dark"])
 
+    # テンプレートとして使うため、全スライドを削除（レイアウト定義のみ残す）
+    # python-pptxにはスライド削除APIがないため、XML操作とパーツ削除で対応
+    for slide in list(prs.slides):
+        rId = slide.part.partname
+        # プレゼンテーションパーツからスライドパーツへの関連を削除
+        for rel in prs.part.rels.values():
+            if rel.target_part is slide.part:
+                prs.part.drop_rel(rel.rId)
+                break
+    # sldIdLst からも参照を除去
+    slide_list = prs.slides._sldIdLst
+    for sldId in list(slide_list):
+        slide_list.remove(sldId)
+
     # Save
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
     output_path = TEMPLATE_DIR / f"{name}.pptx"

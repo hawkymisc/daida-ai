@@ -10,6 +10,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from daida_ai.lib.slide_spec import load_slide_spec
 from daida_ai.lib.slide_builder import build_presentation
 
+# 同梱テンプレートのディレクトリ
+_BUILTIN_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "assets" / "templates"
+
+
+def _resolve_template(spec_template: str, cli_template: Path | None) -> str | None:
+    """テンプレートパスを解決する。
+
+    優先順位:
+    1. CLI引数で明示指定された場合 → そのパス
+    2. metadata.templateが同梱テンプレート名の場合 → 同梱テンプレートのパス
+    3. いずれにも該当しない場合 → None（python-pptxデフォルト）
+    """
+    if cli_template:
+        return str(cli_template)
+
+    builtin = _BUILTIN_TEMPLATES_DIR / f"{spec_template}.pptx"
+    if builtin.exists():
+        return str(builtin)
+
+    return None
+
 
 def main():
     parser = argparse.ArgumentParser(description="スライド仕様JSONからPPTXを生成する")
@@ -19,7 +40,7 @@ def main():
         "--template",
         type=Path,
         default=None,
-        help="カスタムテンプレートPPTXのパス",
+        help="カスタムテンプレートPPTXのパス（省略時はmetadata.templateを使用）",
     )
     args = parser.parse_args()
 
@@ -32,12 +53,14 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    template = str(args.template) if args.template else None
-    prs = build_presentation(spec, template_path=template)
+    template_path = _resolve_template(spec.metadata.template, args.template)
+    prs = build_presentation(spec, template_path=template_path)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(args.output))
-    print(f"PPTX saved: {args.output} ({len(spec.slides)} slides)")
+
+    template_name = spec.metadata.template if not args.template else str(args.template)
+    print(f"PPTX saved: {args.output} ({len(spec.slides)} slides, template: {template_name})")
 
 
 if __name__ == "__main__":

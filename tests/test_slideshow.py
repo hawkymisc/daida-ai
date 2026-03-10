@@ -332,28 +332,67 @@ class Testフォールバック:
     def test_音声シェイプありデュレーション不明でもauto_playが設定される(
         self, pptx_with_audio: Path, tmp_output_dir: Path
     ):
-        """音声シェイプが存在すれば、デュレーション不明でもtiming要素が追加される。
-        （_get_audio_duration_msが0を返しても、_find_audio_shape_idsで検出）
-        """
+        """音声シェイプが存在すれば、デュレーション不明でもtiming要素が追加される。"""
+        from unittest.mock import patch
+
         output = tmp_output_dir / "show_fallback.pptx"
-        configure_slideshow(pptx_with_audio, output)
+        # _estimate_mp3_duration_msを0返しにスタブ → 計測不能シナリオ
+        with patch(
+            "daida_ai.lib.slideshow._estimate_mp3_duration_ms", return_value=0
+        ):
+            configure_slideshow(pptx_with_audio, output)
 
         prs = Presentation(str(output))
-        # スライド1は音声あり → timing要素がある
+        # スライド1は音声シェイプあり → timing要素が追加される
         timing = prs.slides[1].element.find("p:timing", _ns)
         assert timing is not None
         audio_nodes = timing.findall(".//p:audio", _ns)
         assert len(audio_nodes) >= 1
 
-    def test_unmeasurable_duration_msが適用される(
+    def test_unmeasurable_duration_msがadvTmに反映される(
         self, pptx_with_audio: Path, tmp_output_dir: Path
     ):
-        """unmeasurable_duration_msパラメータのテスト"""
+        """デュレーション計測不能時にフォールバック値がadvTmに使われる"""
+        from unittest.mock import patch
+
         output = tmp_output_dir / "show_unmeasurable.pptx"
-        # デフォルト30000ms。通常のダミーMP3は計測可能なので直接テストが難しいが、
-        # パラメータが受け入れられることを確認
-        configure_slideshow(
-            pptx_with_audio, output, unmeasurable_duration_ms=15000
-        )
+        with patch(
+            "daida_ai.lib.slideshow._estimate_mp3_duration_ms", return_value=0
+        ):
+            configure_slideshow(
+                pptx_with_audio,
+                output,
+                unmeasurable_duration_ms=15000,
+                audio_buffer_ms=2000,
+            )
+
         prs = Presentation(str(output))
-        assert len(prs.slides) == 4
+        # スライド1は音声シェイプあり → advTm = 15000 + 2000 = 17000
+        slide1_trans = prs.slides[1].element.find("p:transition", _ns)
+        assert slide1_trans is not None
+        assert slide1_trans.get("advTm") == "17000"
+
+
+class TestXMLスキーマ順序:
+    """ECMA-376 CT_Slide: transition? は timing? より前に来る"""
+
+    def test_transitionがtimingより前に配置される(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """音声付きスライドでtransitionとtimingの順序が正しい"""
+        output = tmp_output_dir / "show_order.pptx"
+        configure_slideshow(pptx_with_audio, output)
+
+        prs = Presentation(str(output))
+        slide_elem = prs.slides[1].element
+        children = list(slide_elem)
+        child_tags = [c.tag.split("}")[-1] for c in children]
+
+        # transitionとtimingが両方存在する場合、transitionが先
+        if "transition" in child_tags and "timing" in child_tags:
+            trans_idx = child_tags.index("transition")
+            timing_idx = child_tags.index("timing")
+            assert trans_idx < timing_idx, (
+                f"transition(idx={trans_idx}) must precede "
+                f"timing(idx={timing_idx})"
+            )

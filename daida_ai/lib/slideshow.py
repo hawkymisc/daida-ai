@@ -65,11 +65,14 @@ def configure_slideshow(
             else:
                 # 外部リンク/非MP3など計測不能 → フォールバック
                 advance_ms = unmeasurable_duration_ms + audio_buffer_ms
-            _add_auto_play_animation(slide)
         else:
             advance_ms = silent_duration_ms
 
+        # ECMA-376 CT_Slide: transition? は timing? より前に来る必要がある
+        # transitionを先に設定してからtimingを追加する
         _set_auto_advance(slide, advance_ms)
+        if has_audio_shapes:
+            _add_auto_play_animation(slide)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))

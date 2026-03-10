@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 
 from daida_ai.lib.tts_engine import TTSEngine
+from daida_ai.lib.audio_utils import ensure_mp3
 
 DEFAULT_HOST = "http://localhost:50021"
 DEFAULT_SPEAKER_ID = 1  # ずんだもん（ノーマル）
@@ -44,7 +45,16 @@ class VoicevoxTTSEngine(TTSEngine):
             synth_resp.raise_for_status()
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(synth_resp.content)
+
+        # VOICEVOX APIはWAVを返すため、一旦WAVとして保存しMP3に変換
+        wav_path = output_path.with_suffix(".wav")
+        wav_path.write_bytes(synth_resp.content)
+        mp3_path = ensure_mp3(wav_path)
+
+        # 出力パスが.mp3と異なる場合にリネーム
+        if mp3_path != output_path:
+            mp3_path.rename(output_path)
+
         return output_path
 
     def available_voices(self) -> list[str]:

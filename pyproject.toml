@@ -7,6 +7,7 @@ dependencies = [
     "python-pptx>=1.0.0",
     "edge-tts>=6.1.0",
     "pydub>=0.25.1",
+    "audioop-lts>=0.2.1",
     "Pillow>=10.0.0",
 ]
 

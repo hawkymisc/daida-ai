@@ -69,9 +69,9 @@ def _get_audio_duration_ms(slide) -> int:
     """スライドに埋め込まれた音声のデュレーションを推定する（ミリ秒）。
 
     音声がない場合は0を返す。
-    複数の音声トラックがある場合は最長のデュレーションを返す。
-    OPCリレーションシップからメディアパーツを取得し、
-    MP3バイナリからデュレーションを推定する。
+    複数の音声トラックがある場合は最長のデュレーションを返す
+    （audioノードはdelay="0"で同時再生されるため、maxが正しい）。
+    RT.MEDIAにはビデオも含まれるため、content_typeでaudioのみフィルタする。
     """
     media_rels = [r for r in slide.part.rels.values() if r.reltype == RT.MEDIA]
     if not media_rels:
@@ -82,10 +82,13 @@ def _get_audio_duration_ms(slide) -> int:
         if rel.is_external:
             continue
         try:
-            audio_blob = rel.target_part.blob
+            part = rel.target_part
         except Exception:
             continue
-        duration = _estimate_mp3_duration_ms(audio_blob)
+        # ビデオ等の非音声メディアを除外
+        if not part.content_type.startswith("audio/"):
+            continue
+        duration = _estimate_mp3_duration_ms(part.blob)
         if duration > max_duration:
             max_duration = duration
     return max_duration

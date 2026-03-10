@@ -193,3 +193,134 @@ class Testカスタム設定:
         adv_tm = int(slide1_trans.get("advTm"))
         # バッファ2000ms以上は確保されているはず
         assert adv_tm >= 2000
+
+
+class Test既存アニメーション保持:
+    """既存のアニメーションが破壊されないことを検証"""
+
+    @pytest.fixture
+    def pptx_with_existing_animation(self, tmp_output_dir: Path) -> Path:
+        """既存アニメーション+音声付きPPTX"""
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a", "b"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "base.pptx"
+        prs.save(str(pptx_path))
+
+        # スライド1に音声を埋め込む
+        audio_dir = tmp_output_dir / "audio_anim"
+        audio_dir.mkdir()
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "with_audio_anim.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # スライド1に既存アニメーション（テキストフェードイン）を手動追加
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        # shape id=2をターゲットにしたダミーアニメーション
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" fill="hold">
+                          <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="500" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+            <p:prevCondLst>
+              <p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond>
+            </p:prevCondLst>
+            <p:nextCondLst>
+              <p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond>
+            </p:nextCondLst>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        timing_elem = etree.fromstring(timing_xml)
+        slide.element.append(timing_elem)
+
+        result = tmp_output_dir / "with_existing_anim.pptx"
+        prs2.save(str(result))
+        return result
+
+    def test_既存アニメーションが保持される(
+        self, pptx_with_existing_animation: Path, tmp_output_dir: Path
+    ):
+        """configure_slideshow後も既存のp:animノードが残る"""
+        output = tmp_output_dir / "show_anim.pptx"
+        configure_slideshow(pptx_with_existing_animation, output)
+
+        prs = Presentation(str(output))
+        timing = prs.slides[1].element.find("p:timing", _ns)
+        assert timing is not None
+
+        # 既存のアニメーション（p:anim）が残っている
+        anim_nodes = timing.findall(".//p:anim", _ns)
+        assert len(anim_nodes) >= 1, "既存のp:animアニメーションが保持されるべき"
+
+    def test_既存アニメーションに音声ノードが追加される(
+        self, pptx_with_existing_animation: Path, tmp_output_dir: Path
+    ):
+        """既存アニメーション構造に音声auto-playがマージされる"""
+        output = tmp_output_dir / "show_anim.pptx"
+        configure_slideshow(pptx_with_existing_animation, output)
+
+        prs = Presentation(str(output))
+        timing = prs.slides[1].element.find("p:timing", _ns)
+        assert timing is not None
+
+        # 音声auto-playノードが追加されている
+        audio_nodes = timing.findall(".//p:audio", _ns)
+        assert len(audio_nodes) >= 1, "音声auto-playノードが追加されるべき"
+
+    def test_二重実行しても音声ノードが重複しない(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """configure_slideshowを2回実行してもaudioノードが重複しない"""
+        intermediate = tmp_output_dir / "show_pass1.pptx"
+        configure_slideshow(pptx_with_audio, intermediate)
+
+        output = tmp_output_dir / "show_pass2.pptx"
+        configure_slideshow(intermediate, output)
+
+        prs = Presentation(str(output))
+        timing = prs.slides[1].element.find("p:timing", _ns)
+        assert timing is not None
+
+        audio_nodes = timing.findall(".//p:audio", _ns)
+        assert len(audio_nodes) == 1, "audioノードは1つだけであるべき"

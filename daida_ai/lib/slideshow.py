@@ -61,6 +61,7 @@ def _get_audio_duration_ms(slide) -> int:
     """スライドに埋め込まれた音声のデュレーションを推定する（ミリ秒）。
 
     音声がない場合は0を返す。
+    複数の音声トラックがある場合は最長のデュレーションを返す。
     OPCリレーションシップからメディアパーツを取得し、
     MP3バイナリからデュレーションを推定する。
     """
@@ -68,10 +69,13 @@ def _get_audio_duration_ms(slide) -> int:
     if not media_rels:
         return 0
 
-    # 最初のメディアリレーションシップの音声データを取得
-    media_part = media_rels[0].target_part
-    audio_blob = media_part.blob
-    return _estimate_mp3_duration_ms(audio_blob)
+    max_duration = 0
+    for rel in media_rels:
+        audio_blob = rel.target_part.blob
+        duration = _estimate_mp3_duration_ms(audio_blob)
+        if duration > max_duration:
+            max_duration = duration
+    return max_duration
 
 
 def _estimate_mp3_duration_ms(data: bytes) -> int:
@@ -130,51 +134,146 @@ def _set_auto_advance(slide, advance_ms: int) -> None:
 def _add_auto_play_animation(slide) -> None:
     """スライドの音声シェイプに自動再生アニメーションを設定する。
 
+    既存のアニメーション（テキスト・図形等）を保持しつつ、
+    音声auto-playノードをmainSeqにマージする。
+
     PowerPointのアニメーション構造:
     p:timing > p:tnLst > p:par (tmRoot) > p:childTnLst > p:seq (mainSeq) >
     p:cTn > p:childTnLst > p:par > p:cTn > p:childTnLst > p:par > p:cTn >
     p:childTnLst > p:audio > p:cMediaNode > p:cTn + p:tgtEl
     """
-    # 音声シェイプのIDを取得
-    audio_shape_id = _find_audio_shape_id(slide)
-    if audio_shape_id is None:
+    audio_shape_ids = _find_audio_shape_ids(slide)
+    if not audio_shape_ids:
         return
 
-    # 既存のtiming要素を削除して再構築
     slide_elem = slide.element
     existing_timing = slide_elem.find(f"{{{_P_NS}}}timing")
-    if existing_timing is not None:
-        slide_elem.remove(existing_timing)
 
-    timing_xml = f"""<p:timing xmlns:p="{_P_NS}">
-  <p:tnLst>
-    <p:par>
-      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
-        <p:childTnLst>
-          <p:seq concurrent="1" nextAc="seek">
-            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
-              <p:childTnLst>
+    if existing_timing is not None:
+        # 既存のtiming構造にaudioノードをマージ
+        _merge_audio_into_timing(existing_timing, audio_shape_ids)
+    else:
+        # timing要素がない場合は新規作成
+        timing_elem = _build_timing_xml(audio_shape_ids)
+        slide_elem.append(timing_elem)
+
+
+def _merge_audio_into_timing(
+    timing_elem: etree._Element, audio_shape_ids: list[int]
+) -> None:
+    """既存のp:timing構造に音声auto-playノードを追加する。
+
+    mainSeqのchildTnLstに音声用p:parを追加する。
+    既存のアニメーションはそのまま保持される。
+    """
+    # mainSeq (nodeType="mainSeq") を探す
+    main_seq_ctn = timing_elem.find(
+        f".//{{{_P_NS}}}cTn[@nodeType='mainSeq']"
+    )
+    if main_seq_ctn is None:
+        return
+
+    child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
+    if child_tn_lst is None:
+        child_tn_lst = etree.SubElement(main_seq_ctn, f"{{{_P_NS}}}childTnLst")
+
+    # 既存のaudioノードのspidを取得して重複を避ける
+    existing_spids: set[int] = set()
+    for spgt in timing_elem.iter(f"{{{_P_NS}}}spTgt"):
+        parent_audio = spgt.getparent()
+        while parent_audio is not None:
+            if parent_audio.tag == f"{{{_P_NS}}}audio":
+                spid = spgt.get("spid")
+                if spid is not None:
+                    existing_spids.add(int(spid))
+                break
+            parent_audio = parent_audio.getparent()
+
+    # 次のcTn idを算出
+    max_id = _get_max_ctn_id(timing_elem)
+
+    for shape_id in audio_shape_ids:
+        if shape_id in existing_spids:
+            continue
+        audio_par = _build_audio_par_xml(shape_id, max_id + 1)
+        child_tn_lst.append(audio_par)
+        max_id += 3  # 各audioノードはcTn idを3つ使う
+
+
+def _get_max_ctn_id(timing_elem: etree._Element) -> int:
+    """timing要素内の最大cTn idを取得する。"""
+    max_id = 0
+    for ctn in timing_elem.iter(f"{{{_P_NS}}}cTn"):
+        id_val = ctn.get("id")
+        if id_val is not None:
+            max_id = max(max_id, int(id_val))
+    return max_id
+
+
+def _build_audio_par_xml(
+    shape_id: int, start_id: int
+) -> etree._Element:
+    """音声auto-play用のp:parノードを構築する。"""
+    xml = f"""<p:par xmlns:p="{_P_NS}">
+  <p:cTn id="{start_id}" fill="hold">
+    <p:stCondLst>
+      <p:cond delay="0"/>
+    </p:stCondLst>
+    <p:childTnLst>
+      <p:par>
+        <p:cTn id="{start_id + 1}" fill="hold">
+          <p:stCondLst>
+            <p:cond delay="0"/>
+          </p:stCondLst>
+          <p:childTnLst>
+            <p:audio>
+              <p:cMediaNode>
+                <p:cTn id="{start_id + 2}" fill="hold" display="0">
+                  <p:stCondLst>
+                    <p:cond delay="0"/>
+                  </p:stCondLst>
+                </p:cTn>
+                <p:tgtEl>
+                  <p:spTgt spid="{shape_id}"/>
+                </p:tgtEl>
+              </p:cMediaNode>
+            </p:audio>
+          </p:childTnLst>
+        </p:cTn>
+      </p:par>
+    </p:childTnLst>
+  </p:cTn>
+</p:par>"""
+    return etree.fromstring(xml)
+
+
+def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
+    """音声auto-play用の完全なp:timing要素を構築する。"""
+    audio_pars = ""
+    ctn_id = 3
+    for shape_id in audio_shape_ids:
+        audio_pars += f"""
                 <p:par>
-                  <p:cTn id="3" fill="hold">
+                  <p:cTn id="{ctn_id}" fill="hold">
                     <p:stCondLst>
                       <p:cond delay="0"/>
                     </p:stCondLst>
                     <p:childTnLst>
                       <p:par>
-                        <p:cTn id="4" fill="hold">
+                        <p:cTn id="{ctn_id + 1}" fill="hold">
                           <p:stCondLst>
                             <p:cond delay="0"/>
                           </p:stCondLst>
                           <p:childTnLst>
                             <p:audio>
                               <p:cMediaNode>
-                                <p:cTn id="5" fill="hold" display="0">
+                                <p:cTn id="{ctn_id + 2}" fill="hold" display="0">
                                   <p:stCondLst>
                                     <p:cond delay="0"/>
                                   </p:stCondLst>
                                 </p:cTn>
                                 <p:tgtEl>
-                                  <p:spTgt spid="{audio_shape_id}"/>
+                                  <p:spTgt spid="{shape_id}"/>
                                 </p:tgtEl>
                               </p:cMediaNode>
                             </p:audio>
@@ -183,7 +282,17 @@ def _add_auto_play_animation(slide) -> None:
                       </p:par>
                     </p:childTnLst>
                   </p:cTn>
-                </p:par>
+                </p:par>"""
+        ctn_id += 3
+
+    timing_xml = f"""<p:timing xmlns:p="{_P_NS}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>{audio_pars}
               </p:childTnLst>
             </p:cTn>
             <p:prevCondLst>
@@ -202,25 +311,22 @@ def _add_auto_play_animation(slide) -> None:
     </p:par>
   </p:tnLst>
 </p:timing>"""
-
-    timing_elem = etree.fromstring(timing_xml)
-    slide_elem.append(timing_elem)
+    return etree.fromstring(timing_xml)
 
 
-def _find_audio_shape_id(slide) -> int | None:
-    """スライドから音声シェイプのIDを取得する。
+def _find_audio_shape_ids(slide) -> list[int]:
+    """スライドから全音声シェイプのIDを取得する。
 
-    a:audioFile要素を持つp:pic要素のcNvPr idを返す。
+    a:audioFile要素を持つp:pic要素のcNvPr idをリストで返す。
     """
+    ids: list[int] = []
     slide_elem = slide.element
-    # audioFile要素を持つnvPrを探す
     for audio_file in slide_elem.iter(f"{{{_A_NS}}}audioFile"):
-        # audioFile → nvPr → nvPicPr → cNvPr
         nv_pr = audio_file.getparent()
         if nv_pr is not None:
             nv_pic_pr = nv_pr.getparent()
             if nv_pic_pr is not None:
                 c_nv_pr = nv_pic_pr.find(f"{{{_P_NS}}}cNvPr")
                 if c_nv_pr is not None:
-                    return int(c_nv_pr.get("id"))
-    return None
+                    ids.append(int(c_nv_pr.get("id")))
+    return ids

@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from daida_ai.lib.slide_spec import load_slide_spec
 from daida_ai.lib.slide_builder import build_presentation

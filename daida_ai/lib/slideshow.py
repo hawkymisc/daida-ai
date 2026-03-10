@@ -17,11 +17,19 @@ _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _nsmap = {"p": _P_NS, "a": _A_NS, "r": _R_NS}
 
 # MP3フレームベースの簡易デュレーション推定用
-_MP3_BITRATE_TABLE = {
+# MPEG-1 Layer III ビットレートテーブル (kbps)
+_MPEG1_L3_BITRATE = {
     0b0001: 32, 0b0010: 40, 0b0011: 48, 0b0100: 56,
     0b0101: 64, 0b0110: 80, 0b0111: 96, 0b1000: 112,
     0b1001: 128, 0b1010: 160, 0b1011: 192, 0b1100: 224,
     0b1101: 256, 0b1110: 320,
+}
+# MPEG-2/2.5 Layer III ビットレートテーブル (kbps)
+_MPEG2_L3_BITRATE = {
+    0b0001: 8, 0b0010: 16, 0b0011: 24, 0b0100: 32,
+    0b0101: 40, 0b0110: 48, 0b0111: 56, 0b1000: 64,
+    0b1001: 80, 0b1010: 96, 0b1011: 112, 0b1100: 128,
+    0b1101: 144, 0b1110: 160,
 }
 
 
@@ -71,7 +79,12 @@ def _get_audio_duration_ms(slide) -> int:
 
     max_duration = 0
     for rel in media_rels:
-        audio_blob = rel.target_part.blob
+        if rel.is_external:
+            continue
+        try:
+            audio_blob = rel.target_part.blob
+        except Exception:
+            continue
         duration = _estimate_mp3_duration_ms(audio_blob)
         if duration > max_duration:
             max_duration = duration
@@ -103,15 +116,22 @@ def _estimate_mp3_duration_ms(data: bytes) -> int:
     # 最初のフレームヘッダを探す
     while offset < len(data) - 4:
         if data[offset] == 0xFF and (data[offset + 1] & 0xE0) == 0xE0:
+            # MPEGバージョン判定: ビット4-3 of byte1
+            # 11=MPEG1, 10=MPEG2, 00=MPEG2.5
+            mpeg_version_bits = (data[offset + 1] >> 3) & 0x03
+            is_mpeg1 = mpeg_version_bits == 0b11
+            bitrate_table = _MPEG1_L3_BITRATE if is_mpeg1 else _MPEG2_L3_BITRATE
+            default_bitrate = 128 if is_mpeg1 else 64
+
             bitrate_idx = (data[offset + 2] >> 4) & 0x0F
-            bitrate_kbps = _MP3_BITRATE_TABLE.get(bitrate_idx, 128)
+            bitrate_kbps = bitrate_table.get(bitrate_idx, default_bitrate)
             audio_bytes = len(data) - offset
             duration_s = (audio_bytes * 8) / (bitrate_kbps * 1000)
             return max(int(duration_s * 1000), 1)
         offset += 1
 
-    # フレームヘッダが見つからない場合、128kbps仮定で概算
-    duration_s = (len(data) * 8) / (128 * 1000)
+    # フレームヘッダが見つからない場合、64kbps仮定で概算（MPEG-2寄り）
+    duration_s = (len(data) * 8) / (64 * 1000)
     return max(int(duration_s * 1000), 1)
 
 

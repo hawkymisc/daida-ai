@@ -374,7 +374,7 @@ class Testフォールバック:
 
 
 class TestXMLスキーマ順序:
-    """ECMA-376 CT_Slide: transition? は timing? より前に来る"""
+    """ECMA-376 CT_Slide: cSld, clrMapOvr?, transition?, timing?, hf?, extLst?"""
 
     def test_transitionがtimingより前に配置される(
         self, pptx_with_audio: Path, tmp_output_dir: Path
@@ -396,3 +396,70 @@ class TestXMLスキーマ順序:
                 f"transition(idx={trans_idx}) must precede "
                 f"timing(idx={timing_idx})"
             )
+
+    def test_既存timingがあるスライドでtransitionが正しい位置に挿入される(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """既にtimingが存在するスライドにtransitionを追加した時の順序"""
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        # まず音声付きスライドにtimingだけ手動で追加した状態を作る
+        prs = Presentation(str(pptx_with_audio))
+        slide = prs.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+    <p:childTnLst><p:seq concurrent="1" nextAc="seek">
+      <p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst/></p:cTn>
+      <p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>
+      <p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst>
+    </p:seq></p:childTnLst>
+  </p:cTn></p:par></p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+
+        pre_timing_path = tmp_output_dir / "pre_timing.pptx"
+        prs.save(str(pre_timing_path))
+
+        output = tmp_output_dir / "show_order_pre_timing.pptx"
+        configure_slideshow(pre_timing_path, output)
+
+        prs2 = Presentation(str(output))
+        child_tags = [
+            etree.QName(c).localname for c in prs2.slides[1].element
+        ]
+        assert "transition" in child_tags
+        assert "timing" in child_tags
+        assert child_tags.index("transition") < child_tags.index("timing")
+
+    def test_hf要素があるスライドでtransitionとtimingがhfの前に配置される(
+        self, pptx_no_audio: Path, tmp_output_dir: Path
+    ):
+        """p:hf（ヘッダー/フッター）が存在するスライドでの順序検証"""
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        # スライドにp:hf要素を手動追加
+        prs = Presentation(str(pptx_no_audio))
+        slide = prs.slides[0]
+        hf_elem = etree.Element(f"{{{_P}}}hf")
+        hf_elem.set("sldNum", "0")
+        slide.element.append(hf_elem)
+
+        with_hf_path = tmp_output_dir / "with_hf.pptx"
+        prs.save(str(with_hf_path))
+
+        output = tmp_output_dir / "show_order_hf.pptx"
+        configure_slideshow(with_hf_path, output)
+
+        prs2 = Presentation(str(output))
+        child_tags = [
+            etree.QName(c).localname for c in prs2.slides[0].element
+        ]
+        assert "transition" in child_tags
+        assert "hf" in child_tags
+        assert child_tags.index("transition") < child_tags.index("hf"), (
+            f"transition must precede hf, got: {child_tags}"
+        )

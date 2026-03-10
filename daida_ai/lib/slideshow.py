@@ -35,6 +35,10 @@ _MPEG2_L3_BITRATE = {
 
 _DEFAULT_UNMEASURABLE_DURATION_MS = 30000
 
+# ECMA-376 CT_Slide 子要素の正規順序
+# cSld, clrMapOvr?, transition?, timing?, hf?, extLst?
+_CT_SLIDE_ORDER = ["cSld", "clrMapOvr", "transition", "timing", "hf", "extLst"]
+
 
 def configure_slideshow(
     input_path: Path,
@@ -76,6 +80,32 @@ def configure_slideshow(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
+
+
+def _insert_slide_child(slide_elem: etree._Element, new_elem: etree._Element) -> None:
+    """CT_Slideのスキーマ順序を守って子要素を挿入する。
+
+    ECMA-376 CT_Slide: cSld, clrMapOvr?, transition?, timing?, hf?, extLst?
+    new_elemのタグ名から正しい挿入位置を算出し、後続要素の直前にinsertする。
+    """
+    new_local = etree.QName(new_elem).localname
+    if new_local not in _CT_SLIDE_ORDER:
+        slide_elem.append(new_elem)
+        return
+
+    new_order = _CT_SLIDE_ORDER.index(new_local)
+
+    # 自分より後ろの要素を探し、その直前に挿入する
+    for child in slide_elem:
+        child_local = etree.QName(child).localname
+        if child_local in _CT_SLIDE_ORDER:
+            child_order = _CT_SLIDE_ORDER.index(child_local)
+            if child_order > new_order:
+                child.addprevious(new_elem)
+                return
+
+    # 後続要素がなければ末尾に追加
+    slide_elem.append(new_elem)
 
 
 def _get_audio_duration_ms(slide) -> int:
@@ -160,7 +190,8 @@ def _set_auto_advance(slide, advance_ms: int) -> None:
     trans = slide_elem.find(f"{{{_P_NS}}}transition")
 
     if trans is None:
-        trans = etree.SubElement(slide_elem, f"{{{_P_NS}}}transition")
+        trans = etree.Element(f"{{{_P_NS}}}transition")
+        _insert_slide_child(slide_elem, trans)
 
     trans.set("advClick", "0")
     trans.set("advTm", str(advance_ms))
@@ -190,7 +221,7 @@ def _add_auto_play_animation(slide) -> None:
     else:
         # timing要素がない場合は新規作成
         timing_elem = _build_timing_xml(audio_shape_ids)
-        slide_elem.append(timing_elem)
+        _insert_slide_child(slide_elem, timing_elem)
 
 
 def _merge_audio_into_timing(

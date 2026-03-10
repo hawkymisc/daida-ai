@@ -43,18 +43,23 @@ bash .claude/skills/daida-ai/scripts/setup.sh
 
 ### 方法B: 既存プロジェクトに組み込む
 
-Claude Code は `.claude/skills/<name>/SKILL.md` を検索する。
-このリポジトリの `.claude/skills/daida-ai/` ディレクトリをそのままコピーする。
+スクリプトは `daida_ai` Python パッケージに依存するため、**リポジトリ本体ごとクローン**してから Python パッケージをインストールし、スキルディレクトリを登録する必要がある。
 
 ```bash
-# 一時ディレクトリにクローンしてスキルディレクトリだけコピー
-git clone https://github.com/hawkymisc/daida-ai.git /tmp/daida-ai
-cp -r /tmp/daida-ai/.claude/skills/daida-ai /path/to/your/project/.claude/skills/
+# 1. リポジトリを永続的な場所にクローン
+git clone https://github.com/hawkymisc/daida-ai.git ~/.local/share/daida-ai
 
-# セットアップ（コピー先のプロジェクトルートで実行）
-cd /path/to/your/project
-bash .claude/skills/daida-ai/scripts/setup.sh
+# 2. daida_ai パッケージをプロジェクトの venv にインストール
+#    （先にプロジェクトの venv を activate しておく）
+pip install "~/.local/share/daida-ai[voicevox]"
+
+# 3. スキルディレクトリをプロジェクトに登録
+mkdir -p /path/to/your/project/.claude/skills
+cp -r ~/.local/share/daida-ai/.claude/skills/daida-ai \
+    /path/to/your/project/.claude/skills/
 ```
+
+> **ポイント**: `setup.sh` は `pyproject.toml` のある場所を `PROJECT_ROOT` として自動検出するため、方法Aでない場合は `pip install` で直接インストールする。
 
 ---
 

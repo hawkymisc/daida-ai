@@ -42,8 +42,14 @@ Claude Code 内で以下を実行:
 
 ### Step 3: セットアップ
 
-初回使用時に `/daida-ai:daida-ai` を実行すると、自動的にセットアップが走ります。
-（Python仮想環境の作成と依存パッケージのインストール）
+初回使用時、`/daida-ai:daida-ai` を実行するとセットアップスクリプトの実行を求められます。
+Claude の指示に従い、以下のコマンドを承認してください:
+
+```bash
+bash <plugin-dir>/skills/daida-ai/scripts/setup.sh
+```
+
+これにより Python 仮想環境の作成と依存パッケージのインストールが行われます。
 
 ## 使い方
 

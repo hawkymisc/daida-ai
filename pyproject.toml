@@ -20,6 +20,9 @@ dev = [
     "httpx>=0.27.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["daida_ai*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -163,6 +163,24 @@ class TestValidateSlideSpec:
         )
         assert len(spec.slides) == 0
 
+    def test_metadata_titleが欠損するとValueError(self):
+        with pytest.raises(ValueError, match="title"):
+            validate_slide_spec(
+                {
+                    "metadata": {"subtitle": "S", "event": "E"},
+                    "slides": [],
+                }
+            )
+
+    def test_slideのlayoutが欠損するとValueError(self):
+        with pytest.raises(ValueError, match="layout"):
+            validate_slide_spec(
+                {
+                    "metadata": {"title": "T", "subtitle": "S", "event": "E"},
+                    "slides": [{"title": "no layout"}],
+                }
+            )
+
     def test_各レイアウトが正しくパースされる(self, valid_spec_dict: dict):
         spec = validate_slide_spec(valid_spec_dict)
         layouts = [s.layout for s in spec.slides]

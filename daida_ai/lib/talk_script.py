@@ -23,7 +23,7 @@ def read_notes(pptx_path: Path) -> list[str]:
     for slide in prs.slides:
         if slide.has_notes_slide:
             text = slide.notes_slide.notes_text_frame.text
-            notes.append(text.strip())
+            notes.append(text)
         else:
             notes.append("")
     return notes

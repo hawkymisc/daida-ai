@@ -78,6 +78,8 @@ def _parse_two_column(data: dict | None) -> TwoColumnContent | None:
 
 
 def _parse_slide(data: dict) -> Slide:
+    if "layout" not in data:
+        raise ValueError("slide requires 'layout' field")
     return Slide(
         layout=data["layout"],
         title=data.get("title", ""),
@@ -101,6 +103,8 @@ def validate_slide_spec(data: dict) -> SlideSpec:
         raise ValueError("slides is required")
 
     meta_raw = data["metadata"]
+    if "title" not in meta_raw:
+        raise ValueError("metadata requires 'title' field")
     metadata = SlideMetadata(
         title=meta_raw["title"],
         subtitle=meta_raw.get("subtitle", ""),

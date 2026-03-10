@@ -1,4 +1,4 @@
-"""E2Eテスト: テーマ → アウトライン → JSON → PPTX → ノート → 音声埋め込み
+"""E2Eテスト: テーマ → アウトライン → JSON → PPTX → ノート → 音声埋め込み → スライドショー
 
 全パイプラインをプログラム的に通して動作検証する。
 音声合成（edge-tts/VOICEVOX）はネットワーク依存のためモックする。
@@ -15,6 +15,7 @@ from daida_ai.lib.slide_spec import validate_slide_spec, save_slide_spec, load_s
 from daida_ai.lib.slide_builder import build_presentation
 from daida_ai.lib.talk_script import read_notes, write_notes
 from daida_ai.lib.audio_embed import embed_audio_to_pptx
+from daida_ai.lib.slideshow import configure_slideshow
 
 
 # ── Step 1 相当: Markdownアウトライン ──
@@ -216,7 +217,7 @@ class TestE2EPipeline:
         assert len(reopened.slides) == 6
 
     def test_フルパイプライン(self, tmp_output_dir: Path):
-        """テーマ → アウトライン → JSON → PPTX → ノート更新 → 音声埋め込み"""
+        """テーマ → アウトライン → JSON → PPTX → ノート更新 → 音声埋め込み → スライドショー"""
         # Step 1: アウトラインパース
         outline = parse_outline(SAMPLE_OUTLINE)
         assert outline.title is not None
@@ -252,12 +253,34 @@ class TestE2EPipeline:
         count = embed_audio_to_pptx(pptx_path, audio_dir, final_path)
         assert count > 0
 
+        # Step 6: スライドショー自動再生設定
+        _ns = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main"}
+        slideshow_path = tmp_output_dir / "slideshow.pptx"
+        configure_slideshow(final_path, slideshow_path)
+
         # 最終検証
-        final_prs = Presentation(str(final_path))
+        final_prs = Presentation(str(slideshow_path))
         assert len(final_prs.slides) == 6
 
+        # 全スライドにtransition（自動ページ送り）が設定されている
+        for slide in final_prs.slides:
+            trans = slide.element.find("p:transition", _ns)
+            assert trans is not None, "全スライドにtransitionが必要"
+            assert trans.get("advClick") == "0"
+            assert trans.get("advTm") is not None
+
+        # 音声付きスライドにtiming（音声auto-play）が設定されている
+        audio_slides_with_timing = 0
+        for slide in final_prs.slides:
+            timing = slide.element.find("p:timing", _ns)
+            if timing is not None:
+                audio_nodes = timing.findall(".//p:audio", _ns)
+                if audio_nodes:
+                    audio_slides_with_timing += 1
+        assert audio_slides_with_timing > 0, "音声付きスライドにtimingが必要"
+
         # ノートが更新されていることを確認
-        final_notes = read_notes(final_path)
+        final_notes = read_notes(slideshow_path)
         for i, note in enumerate(final_notes):
             if note:
                 assert "更新済み" in note

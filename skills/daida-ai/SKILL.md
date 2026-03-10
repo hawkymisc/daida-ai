@@ -18,7 +18,7 @@ description: >
 
 テーマ入力から完成プレゼンまでの一連のパイプラインを実行する。
 
-**パイプライン**: テーマ → アウトライン → コンテンツ充実化(JSON) → PPTX生成 → トークスクリプト → 音声合成 → 音声埋め込み
+**パイプライン**: テーマ → アウトライン → コンテンツ充実化(JSON) → PPTX生成 → トークスクリプト → 音声合成 → 音声埋め込み → スライドショー自動再生設定
 
 ## 前提条件
 
@@ -231,6 +231,27 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh embed_audio.py output/presentation.pptx output/audio/ output/presentation_with_audio.pptx
+```
+
+---
+
+## Step 6: スライドショー自動再生設定
+
+音声埋め込み済みPPTXに、自動ページ送りと音声自動再生を設定する。
+これにより、スライドショーを開始するだけで最後まで完全自動で再生される。
+
+- 音声付きスライド: 音声再生完了 + バッファ（デフォルト1秒）で自動ページ送り
+- 音声なしスライド（表紙・中表紙等）: 固定時間（デフォルト3秒）で自動ページ送り
+
+### スクリプト実行
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_with_audio.pptx output/presentation_final.pptx
+```
+
+表示時間を調整する場合:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_with_audio.pptx output/presentation_final.pptx --silent-duration 5000 --audio-buffer 2000
 ```
 
 ---

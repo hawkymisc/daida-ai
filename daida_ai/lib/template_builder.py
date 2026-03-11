@@ -212,7 +212,7 @@ def build_template(
     is_default_base = base_template is None
     # ベーステンプレートをコピーしてから内部XMLを書き換え
     shutil.copy2(str(src), str(output_path))
-    _apply_design(output_path, design, name, adjust_placeholders=is_default_base)
+    _apply_design(output_path, design, name, is_default_base=is_default_base)
 
 
 def _apply_design(
@@ -220,13 +220,13 @@ def _apply_design(
     design: dict[str, str],
     name: str,
     *,
-    adjust_placeholders: bool = True,
+    is_default_base: bool = True,
 ) -> None:
     """PPTXファイル内のテーマ・マスターXMLを書き換える。
 
     Args:
-        adjust_placeholders: デフォルトベーステンプレート用のプレースホルダ座標調整を行うか。
-            カスタムbase_template使用時はFalseにすること。
+        is_default_base: 同梱ベーステンプレートを使用しているか。
+            Falseの場合、プレースホルダ座標調整と装飾シェイプ追加をスキップする。
     """
     nsmap = {"a": _A_NS, "p": _P_NS}
     # zipは in-place 更新不可なので、全エントリをメモリに読み込み→書き戻し
@@ -250,13 +250,14 @@ def _apply_design(
     master_data = next(d for zi, d in zip_entries if zi.filename == "ppt/slideMasters/slideMaster1.xml")
     master_root = etree.fromstring(master_data)
     _apply_background(master_root, design)
-    _add_decorations(master_root, name)
+    if is_default_base:
+        _add_decorations(master_root, name)
     updated["ppt/slideMasters/slideMaster1.xml"] = etree.tostring(
         master_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
     # プレースホルダ調整（デフォルトベーステンプレートのみ）
-    if adjust_placeholders:
+    if is_default_base:
         for xml_path, adjustments in _PH_ADJUSTMENTS.items():
             data = updated.get(xml_path) or next(
                 (d for zi, d in zip_entries if zi.filename == xml_path), None
@@ -380,14 +381,23 @@ def _apply_background(master_root: etree._Element, design: dict[str, str]) -> No
 
 
 def _add_decorations(master_root: etree._Element, name: str) -> None:
-    """スライドマスターに装飾シェイプを追加する。"""
+    """スライドマスターに装飾シェイプを追加する。
+
+    装飾はプレースホルダより背面に描画するため、spTree 内の最初の
+    p:sp（プレースホルダ）の直前に挿入する。
+    """
     configs = DECORATION_CONFIGS.get(name, [])
     if not configs:
         return
     nsmap = {"a": _A_NS, "p": _P_NS}
     spTree = master_root.find(".//p:cSld/p:spTree", nsmap)
-    for cfg in configs:
-        spTree.append(_build_decoration_shape(cfg))
+    # 最初の p:sp の位置を特定（grpSpPr 等の後）
+    first_sp_idx = next(
+        (i for i, child in enumerate(spTree) if child.tag == _qn("p:sp")),
+        len(spTree),
+    )
+    for offset, cfg in enumerate(configs):
+        spTree.insert(first_sp_idx + offset, _build_decoration_shape(cfg))
 
 
 def _build_decoration_shape(cfg: dict) -> etree._Element:

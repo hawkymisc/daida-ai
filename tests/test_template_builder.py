@@ -350,3 +350,53 @@ class Test装飾シェイプ:
         for sp in decos:
             ph = sp.find("p:nvSpPr/p:nvPr/p:ph", _nsmap)
             assert ph is None
+
+    def test_装飾シェイプはプレースホルダより背面(self, template_data):
+        """装飾シェイプがspTree内でプレースホルダより前に配置される"""
+        name, master = template_data
+        if not DECORATION_CONFIGS[name]:
+            pytest.skip("no decorations for this template")
+        spTree = master.find(".//p:cSld/p:spTree", _nsmap)
+        shapes = spTree.findall("p:sp", _nsmap)
+        last_deco_idx = -1
+        first_ph_idx = len(shapes)
+        for i, sp in enumerate(shapes):
+            ph = sp.find("p:nvSpPr/p:nvPr/p:ph", _nsmap)
+            if ph is None:
+                last_deco_idx = i
+            elif first_ph_idx == len(shapes):
+                first_ph_idx = i
+        assert last_deco_idx < first_ph_idx, \
+            f"{name}: decorations should precede placeholders"
+
+
+class Testカスタムテンプレート:
+    """カスタムbase_template使用時に装飾・プレースホルダ調整がスキップされる"""
+
+    def test_カスタムテンプレートで装飾が追加されない(self, tmp_output_dir):
+        import shutil
+        from daida_ai.lib.template_builder import _DEFAULT_BASE_TEMPLATE
+        custom = tmp_output_dir / "custom_base.pptx"
+        shutil.copy2(str(_DEFAULT_BASE_TEMPLATE), str(custom))
+        output = tmp_output_dir / "casual_custom.pptx"
+        build_template("casual", output, base_template=custom)
+        master = _read_master_xml(output)
+        decos = _get_decoration_shapes(master)
+        assert len(decos) == 0, "custom template should have no decorations"
+
+    def test_カスタムテンプレートでプレースホルダ座標が変更されない(self, tmp_output_dir):
+        import shutil
+        from daida_ai.lib.template_builder import _DEFAULT_BASE_TEMPLATE
+        custom = tmp_output_dir / "custom_base.pptx"
+        shutil.copy2(str(_DEFAULT_BASE_TEMPLATE), str(custom))
+        # ベーステンプレートの元の座標を取得
+        original_master = _read_master_xml(custom)
+        orig_xfrm = _find_ph_xfrm(original_master, "title", None)
+        orig_cx = int(orig_xfrm.find("a:ext", _nsmap).get("cx"))
+        # カスタムテンプレートでビルド
+        output = tmp_output_dir / "tech_custom.pptx"
+        build_template("tech", output, base_template=custom)
+        result_master = _read_master_xml(output)
+        result_xfrm = _find_ph_xfrm(result_master, "title", None)
+        result_cx = int(result_xfrm.find("a:ext", _nsmap).get("cx"))
+        assert result_cx == orig_cx, "custom template placeholder should not be adjusted"

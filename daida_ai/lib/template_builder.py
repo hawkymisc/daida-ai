@@ -209,13 +209,26 @@ def build_template(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     src = base_template or _DEFAULT_BASE_TEMPLATE
+    is_default_base = base_template is None
     # ベーステンプレートをコピーしてから内部XMLを書き換え
     shutil.copy2(str(src), str(output_path))
-    _apply_design(output_path, design, name)
+    _apply_design(output_path, design, name, adjust_placeholders=is_default_base)
 
 
-def _apply_design(pptx_path: Path, design: dict[str, str], name: str) -> None:
-    """PPTXファイル内のテーマ・マスターXMLを書き換える。"""
+def _apply_design(
+    pptx_path: Path,
+    design: dict[str, str],
+    name: str,
+    *,
+    adjust_placeholders: bool = True,
+) -> None:
+    """PPTXファイル内のテーマ・マスターXMLを書き換える。
+
+    Args:
+        adjust_placeholders: デフォルトベーステンプレート用のプレースホルダ座標調整を行うか。
+            カスタムbase_template使用時はFalseにすること。
+    """
+    nsmap = {"a": _A_NS, "p": _P_NS}
     # zipは in-place 更新不可なので、全エントリをメモリに読み込み→書き戻し
     zip_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
     with zipfile.ZipFile(str(pptx_path), "r") as zf:
@@ -242,6 +255,38 @@ def _apply_design(pptx_path: Path, design: dict[str, str], name: str) -> None:
         master_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
+    # プレースホルダ調整（デフォルトベーステンプレートのみ）
+    if adjust_placeholders:
+        for xml_path, adjustments in _PH_ADJUSTMENTS.items():
+            data = updated.get(xml_path) or next(
+                (d for zi, d in zip_entries if zi.filename == xml_path), None
+            )
+            if data is None:
+                continue
+            root = etree.fromstring(data)
+            spTree = root.find(".//p:cSld/p:spTree", nsmap)
+            for sp in spTree.findall("p:sp", nsmap):
+                nvPr = sp.find("p:nvSpPr/p:nvPr", nsmap)
+                ph = nvPr.find("p:ph", nsmap) if nvPr is not None else None
+                if ph is None:
+                    continue
+                ph_type = ph.get("type", "body")
+                ph_idx = ph.get("idx")
+                key = (ph_type, ph_idx)
+                if key not in adjustments:
+                    continue
+                xfrm = sp.find("p:spPr/a:xfrm", nsmap)
+                if xfrm is None:
+                    continue
+                adj = adjustments[key]
+                if "x" in adj:
+                    xfrm.find("a:off", nsmap).set("x", str(adj["x"]))
+                if "cx" in adj:
+                    xfrm.find("a:ext", nsmap).set("cx", str(adj["cx"]))
+            updated[xml_path] = etree.tostring(
+                root, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
+
     # 元のZipInfoを保持して書き戻し
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w") as zf_out:
@@ -252,9 +297,6 @@ def _apply_design(pptx_path: Path, design: dict[str, str], name: str) -> None:
                 zf_out.writestr(info, data)
 
     pptx_path.write_bytes(buf.getvalue())
-
-    # プレースホルダ調整（zip全体を再度読み書き）
-    _adjust_placeholders(pptx_path)
 
 
 def _apply_color_scheme(theme_root: etree._Element, design: dict[str, str]) -> None:
@@ -376,50 +418,3 @@ def _build_decoration_shape(cfg: dict) -> etree._Element:
     return sp
 
 
-def _adjust_placeholders(pptx_path: Path) -> None:
-    """マスター・レイアウトのプレースホルダを16:9用に左右均等化する。"""
-    nsmap = {"a": _A_NS, "p": _P_NS}
-
-    zip_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
-    with zipfile.ZipFile(str(pptx_path), "r") as zf:
-        for info in zf.infolist():
-            zip_entries.append((info, zf.read(info)))
-
-    updated: dict[str, bytes] = {}
-
-    for xml_path, adjustments in _PH_ADJUSTMENTS.items():
-        data = next((d for zi, d in zip_entries if zi.filename == xml_path), None)
-        if data is None:
-            continue
-        root = etree.fromstring(data)
-        spTree = root.find(".//p:cSld/p:spTree", nsmap)
-
-        for sp in spTree.findall("p:sp", nsmap):
-            nvPr = sp.find("p:nvSpPr/p:nvPr", nsmap)
-            ph = nvPr.find("p:ph", nsmap) if nvPr is not None else None
-            if ph is None:
-                continue
-            ph_type = ph.get("type", "body")
-            ph_idx = ph.get("idx")
-            key = (ph_type, ph_idx)
-            if key not in adjustments:
-                continue
-
-            xfrm = sp.find("p:spPr/a:xfrm", nsmap)
-            if xfrm is None:
-                continue
-            adj = adjustments[key]
-            if "x" in adj:
-                xfrm.find("a:off", nsmap).set("x", str(adj["x"]))
-            if "cx" in adj:
-                xfrm.find("a:ext", nsmap).set("cx", str(adj["cx"]))
-
-        updated[xml_path] = etree.tostring(
-            root, xml_declaration=True, encoding="UTF-8", standalone=True
-        )
-
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf_out:
-        for info, data in zip_entries:
-            zf_out.writestr(info, updated.get(info.filename, data))
-    pptx_path.write_bytes(buf.getvalue())

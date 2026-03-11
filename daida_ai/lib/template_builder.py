@@ -85,8 +85,8 @@ TEMPLATE_DESIGNS: dict[str, dict[str, str]] = {
     },
 }
 
-# ベーステンプレートのパス
-_BASE_TEMPLATE = (
+# ベーステンプレートのデフォルトパス
+_DEFAULT_BASE_TEMPLATE = (
     Path(__file__).resolve().parents[2]
     / "skills" / "daida-ai" / "assets" / "templates" / "tech.pptx"
 )
@@ -99,12 +99,18 @@ def _qn(tag: str) -> str:
     return f"{{{nsmap[prefix]}}}{local}"
 
 
-def build_template(name: str, output_path: Path) -> None:
+def build_template(
+    name: str,
+    output_path: Path,
+    *,
+    base_template: Path | None = None,
+) -> None:
     """テンプレート名からデザイン済みPPTXを生成する。
 
     Args:
         name: "tech", "casual", "formal"
         output_path: 出力ファイルパス
+        base_template: ベーステンプレートのパス（省略時はデフォルト）
 
     Raises:
         ValueError: 不正なテンプレート名
@@ -115,42 +121,47 @@ def build_template(name: str, output_path: Path) -> None:
     design = TEMPLATE_DESIGNS[name]
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    src = base_template or _DEFAULT_BASE_TEMPLATE
     # ベーステンプレートをコピーしてから内部XMLを書き換え
-    shutil.copy2(str(_BASE_TEMPLATE), str(output_path))
+    shutil.copy2(str(src), str(output_path))
     _apply_design(output_path, design)
 
 
 def _apply_design(pptx_path: Path, design: dict[str, str]) -> None:
     """PPTXファイル内のテーマ・マスターXMLを書き換える。"""
     # zipは in-place 更新不可なので、全エントリをメモリに読み込み→書き戻し
-    entries: dict[str, bytes] = {}
+    zip_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
     with zipfile.ZipFile(str(pptx_path), "r") as zf:
         for info in zf.infolist():
-            entries[info.filename] = zf.read(info)
+            zip_entries.append((info, zf.read(info)))
 
-    # テーマXMLを書き換え
-    theme_xml = entries["ppt/theme/theme1.xml"]
-    theme_root = etree.fromstring(theme_xml)
+    # テーマXMLとマスターXMLを書き換え
+    updated: dict[str, bytes] = {}
+
+    theme_data = next(d for zi, d in zip_entries if zi.filename == "ppt/theme/theme1.xml")
+    theme_root = etree.fromstring(theme_data)
     _apply_color_scheme(theme_root, design)
     _apply_font_scheme(theme_root, design)
     _apply_theme_name(theme_root, design)
-    entries["ppt/theme/theme1.xml"] = etree.tostring(
+    updated["ppt/theme/theme1.xml"] = etree.tostring(
         theme_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
-    # スライドマスターXMLの背景を書き換え
-    master_xml = entries["ppt/slideMasters/slideMaster1.xml"]
-    master_root = etree.fromstring(master_xml)
+    master_data = next(d for zi, d in zip_entries if zi.filename == "ppt/slideMasters/slideMaster1.xml")
+    master_root = etree.fromstring(master_data)
     _apply_background(master_root, design)
-    entries["ppt/slideMasters/slideMaster1.xml"] = etree.tostring(
+    updated["ppt/slideMasters/slideMaster1.xml"] = etree.tostring(
         master_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
 
-    # 書き戻し
+    # 元のZipInfoを保持して書き戻し
     buf = BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
-        for filename, data in entries.items():
-            zf_out.writestr(filename, data)
+    with zipfile.ZipFile(buf, "w") as zf_out:
+        for info, data in zip_entries:
+            if info.filename in updated:
+                zf_out.writestr(info, updated[info.filename])
+            else:
+                zf_out.writestr(info, data)
 
     pptx_path.write_bytes(buf.getvalue())
 

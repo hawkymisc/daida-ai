@@ -116,50 +116,79 @@ class Test背景色:
 class Testカラースキーム:
     """テーマのカラースキームが正しく設定される"""
 
-    def test_techのaccent1はシアン系(self, tmp_output_dir: Path):
-        output = tmp_output_dir / "tech.pptx"
-        build_template("tech", output)
-        theme = _read_theme_xml(output)
-        assert _get_color_scheme_value(theme, "accent1") == \
-            TEMPLATE_DESIGNS["tech"]["accent1"].upper()
+    _COLOR_SLOTS = [
+        "dk1", "lt1", "dk2", "lt2",
+        "accent1", "accent2", "accent3", "accent4",
+        "accent5", "accent6", "hlink", "folHlink",
+    ]
 
-    def test_casualのaccent1はオレンジ系(self, tmp_output_dir: Path):
-        output = tmp_output_dir / "casual.pptx"
-        build_template("casual", output)
+    @pytest.fixture(params=["tech", "casual", "formal"])
+    def template_theme(self, request, tmp_output_dir: Path):
+        name = request.param
+        output = tmp_output_dir / f"{name}.pptx"
+        build_template(name, output)
         theme = _read_theme_xml(output)
-        assert _get_color_scheme_value(theme, "accent1") == \
-            TEMPLATE_DESIGNS["casual"]["accent1"].upper()
+        return name, theme
 
-    def test_formalのaccent1はネイビー系(self, tmp_output_dir: Path):
-        output = tmp_output_dir / "formal.pptx"
-        build_template("formal", output)
-        theme = _read_theme_xml(output)
-        assert _get_color_scheme_value(theme, "accent1") == \
-            TEMPLATE_DESIGNS["formal"]["accent1"].upper()
+    def test_全カラースロットがデザイン通り設定される(self, template_theme):
+        name, theme = template_theme
+        design = TEMPLATE_DESIGNS[name]
+        for slot in self._COLOR_SLOTS:
+            actual = _get_color_scheme_value(theme, slot)
+            expected = design[slot].upper()
+            assert actual == expected, \
+                f"{name}.{slot}: expected {expected}, got {actual}"
 
-    def test_dk1がテキスト色として設定される(self, tmp_output_dir: Path):
-        for name in ["tech", "casual", "formal"]:
-            output = tmp_output_dir / f"{name}.pptx"
-            build_template(name, output)
-            theme = _read_theme_xml(output)
-            dk1 = _get_color_scheme_value(theme, "dk1")
-            assert dk1 == TEMPLATE_DESIGNS[name]["dk1"].upper()
+    def test_カラースキーム名が設定される(self, template_theme):
+        name, theme = template_theme
+        clr_scheme = theme.find(".//a:clrScheme", _nsmap)
+        expected = TEMPLATE_DESIGNS[name]["color_scheme_name"]
+        assert clr_scheme.get("name") == expected
 
 
 class Testフォント:
     """テーマのフォントスキームが正しく設定される"""
 
-    def test_majorFontが設定される(self, tmp_output_dir: Path):
-        for name in ["tech", "casual", "formal"]:
-            output = tmp_output_dir / f"{name}.pptx"
-            build_template(name, output)
-            theme = _read_theme_xml(output)
-            major_latin = theme.find(
-                ".//a:fontScheme/a:majorFont/a:latin", _nsmap
-            )
-            expected = TEMPLATE_DESIGNS[name]["major_font_latin"]
-            assert major_latin.get("typeface") == expected, \
-                f"{name}: expected {expected}, got {major_latin.get('typeface')}"
+    @pytest.fixture(params=["tech", "casual", "formal"])
+    def template_theme(self, request, tmp_output_dir: Path):
+        name = request.param
+        output = tmp_output_dir / f"{name}.pptx"
+        build_template(name, output)
+        theme = _read_theme_xml(output)
+        return name, theme
+
+    def test_majorFont_latinが設定される(self, template_theme):
+        name, theme = template_theme
+        latin = theme.find(".//a:fontScheme/a:majorFont/a:latin", _nsmap)
+        expected = TEMPLATE_DESIGNS[name]["major_font_latin"]
+        assert latin.get("typeface") == expected
+
+    def test_minorFont_latinが設定される(self, template_theme):
+        name, theme = template_theme
+        latin = theme.find(".//a:fontScheme/a:minorFont/a:latin", _nsmap)
+        expected = TEMPLATE_DESIGNS[name]["minor_font_latin"]
+        assert latin.get("typeface") == expected
+
+    def test_majorFont_jpanが設定される(self, template_theme):
+        name, theme = template_theme
+        jpan = theme.find(
+            ".//a:fontScheme/a:majorFont/a:font[@script='Jpan']", _nsmap
+        )
+        expected = TEMPLATE_DESIGNS[name]["major_font_jpan"]
+        assert jpan.get("typeface") == expected
+
+    def test_minorFont_jpanが設定される(self, template_theme):
+        name, theme = template_theme
+        jpan = theme.find(
+            ".//a:fontScheme/a:minorFont/a:font[@script='Jpan']", _nsmap
+        )
+        expected = TEMPLATE_DESIGNS[name]["minor_font_jpan"]
+        assert jpan.get("typeface") == expected
+
+    def test_テーマ名が設定される(self, template_theme):
+        name, theme = template_theme
+        expected = TEMPLATE_DESIGNS[name]["theme_name"]
+        assert theme.get("name") == expected
 
 
 class Test差別化:

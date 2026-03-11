@@ -104,6 +104,7 @@ def generate_image(
                 output_path = f"{base}.{ext}"
 
             img_data = base64.b64decode(part["inlineData"]["data"])
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
             with open(output_path, "wb") as f:
                 f.write(img_data)
             image_saved = True

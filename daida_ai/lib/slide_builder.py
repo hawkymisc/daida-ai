@@ -10,14 +10,10 @@ from pptx.util import Inches, Pt, Emu
 
 from daida_ai.lib.slide_spec import SlideSpec, Slide, TwoColumnContent
 
-# 画像配置の定数 (EMU)
-_SLIDE_W = Emu(12191695)
-_SLIDE_H = Emu(6858000)
-_IMG_MARGIN = Emu(457200)         # 左右マージン
+# 画像配置のマージン定数 (EMU)
+_IMG_MARGIN = Emu(457200)         # 左右・下マージン
 _IMG_TOP = Emu(1600200)           # タイトル下の画像開始位置
 _IMG_TOP_BLANK = Emu(457200)     # blankレイアウト時の画像開始位置
-_IMG_MAX_W = _SLIDE_W - 2 * _IMG_MARGIN
-_IMG_MAX_H = _SLIDE_H - _IMG_TOP - _IMG_MARGIN
 
 # デフォルトテンプレートのレイアウトインデックス
 _DEFAULT_LAYOUT_IDX = {
@@ -67,8 +63,26 @@ def _set_notes(slide, text: str | None) -> None:
         notes_slide.notes_text_frame.text = text
 
 
+def _get_slide_size(slide):
+    """スライドの幅・高さを Presentation から取得する。"""
+    prs = slide.part.package.presentation_part.presentation
+    return int(prs.slide_width), int(prs.slide_height)
+
+
+def _calc_image_area(slide_w: int, slide_h: int, *, is_blank: bool = False):
+    """画像配置可能領域の最大幅・最大高さ・開始位置を計算する。"""
+    margin = int(_IMG_MARGIN)
+    top = int(_IMG_TOP_BLANK) if is_blank else int(_IMG_TOP)
+    max_w = slide_w - 2 * margin
+    max_h = slide_h - top - margin
+    return max_w, max_h, top
+
+
 def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
     """スライドに画像を挿入する。アスペクト比を維持してコンテンツ領域に収める。
+
+    スライドの実際のサイズから配置領域を動的に計算するため、
+    4:3、16:9、カスタムサイズのテンプレートいずれにも対応する。
 
     Raises:
         FileNotFoundError: 画像ファイルが存在しない
@@ -80,9 +94,8 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
     with PILImage.open(str(path)) as img:
         img_w, img_h = img.size
 
-    max_w = int(_IMG_MAX_W)
-    top = int(_IMG_TOP_BLANK) if is_blank else int(_IMG_TOP)
-    max_h = int(_SLIDE_H) - top - int(_IMG_MARGIN)
+    slide_w, slide_h = _get_slide_size(slide)
+    max_w, max_h, top = _calc_image_area(slide_w, slide_h, is_blank=is_blank)
 
     # アスペクト比を維持してフィットさせる
     scale = min(max_w / img_w, max_h / img_h)
@@ -90,7 +103,7 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
     height = Emu(int(img_h * scale))
 
     # 水平中央, 垂直はコンテンツ領域内で中央
-    left = Emu((int(_SLIDE_W) - int(width)) // 2)
+    left = Emu((slide_w - int(width)) // 2)
     top_pos = Emu(top + (max_h - int(height)) // 2)
 
     slide.shapes.add_picture(str(path), left, top_pos, width, height)
@@ -167,6 +180,8 @@ def _add_two_content(prs, spec: Slide) -> None:
             p = tf.add_paragraph()
             p.text = item
 
+    if spec.image:
+        _insert_image(slide, spec.image)
     _set_notes(slide, spec.note)
 
 

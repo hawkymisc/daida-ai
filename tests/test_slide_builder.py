@@ -13,11 +13,7 @@ from daida_ai.lib.slide_spec import (
     TwoColumnContent,
     validate_slide_spec,
 )
-from daida_ai.lib.slide_builder import (
-    build_presentation,
-    _IMG_MAX_W,
-    _IMG_MAX_H,
-)
+from daida_ai.lib.slide_builder import build_presentation, _calc_image_area
 
 
 @pytest.fixture
@@ -293,8 +289,25 @@ class TestImageInsertion:
         spec = self._make_spec("title_only", sample_image, title="図")
         prs = build_presentation(spec)
         pic = _find_pictures(prs.slides[0])[0]
-        assert pic.width <= _IMG_MAX_W
-        assert pic.height <= _IMG_MAX_H
+        max_w, max_h, _ = _calc_image_area(
+            int(prs.slide_width), int(prs.slide_height),
+        )
+        assert pic.width <= max_w
+        assert pic.height <= max_h
+
+    def test_two_contentに画像が挿入される(self, sample_image):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(
+                layout="two_content", title="比較",
+                left=TwoColumnContent(heading="左", body=["L1"]),
+                right=TwoColumnContent(heading="右", body=["R1"]),
+                image=str(sample_image),
+            )],
+        )
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
 
     def test_ワイド画像のアスペクト比が維持される(self, wide_image):
         spec = self._make_spec("title_only", wide_image, title="ワイド")

@@ -245,6 +245,17 @@ class TestSlideSpecImage:
         spec = validate_slide_spec(data)
         assert spec.slides[0].image is None
 
+    @pytest.mark.parametrize("bad_value", [True, 123, {"path": "img.png"}, []])
+    def test_validate_slide_specでimage型不正はValueError(self, bad_value):
+        data = {
+            "metadata": {"title": "T", "subtitle": "S", "event": "E"},
+            "slides": [
+                {"layout": "title_only", "title": "図", "image": bad_value},
+            ],
+        }
+        with pytest.raises(ValueError, match="image must be a string"):
+            validate_slide_spec(data)
+
 
 class TestImageInsertion:
     """スライドへの画像挿入"""

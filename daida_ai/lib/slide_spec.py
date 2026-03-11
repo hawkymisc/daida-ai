@@ -81,6 +81,9 @@ def _parse_two_column(data: dict | None) -> TwoColumnContent | None:
 def _parse_slide(data: dict) -> Slide:
     if "layout" not in data:
         raise ValueError("slide requires 'layout' field")
+    image = data.get("image")
+    if image is not None and not isinstance(image, str):
+        raise ValueError(f"image must be a string or null, got {type(image).__name__}")
     return Slide(
         layout=data["layout"],
         title=data.get("title", ""),
@@ -89,7 +92,7 @@ def _parse_slide(data: dict) -> Slide:
         left=_parse_two_column(data.get("left")),
         right=_parse_two_column(data.get("right")),
         note=data.get("note"),
-        image=data.get("image"),
+        image=image,
     )
 
 

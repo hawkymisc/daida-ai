@@ -7,6 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from pptx.exc import PackageNotFoundError
+
 from daida_ai.lib.slide_spec import load_slide_spec
 from daida_ai.lib.slide_builder import build_presentation
 
@@ -57,7 +59,7 @@ def main():
 
     try:
         prs = build_presentation(spec, template_path=template_path)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, PackageNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 

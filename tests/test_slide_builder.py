@@ -255,6 +255,18 @@ class TestImageInsertion:
             slides=[Slide(layout=layout, image=str(image_path), **kwargs)],
         )
 
+    def test_title_slideに画像が挿入される(self, sample_image):
+        spec = self._make_spec("title_slide", sample_image, title="表紙")
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_section_headerに画像が挿入される(self, sample_image):
+        spec = self._make_spec("section_header", sample_image, title="セクション")
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
     def test_title_onlyに画像が挿入される(self, sample_image):
         spec = self._make_spec("title_only", sample_image, title="図")
         prs = build_presentation(spec)

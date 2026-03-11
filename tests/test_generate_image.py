@@ -11,7 +11,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "daida-ai" / "scripts"))
 
-from generate_image import generate_image, MODELS, VALID_ASPECT_RATIOS, VALID_SIZES
+from generate_image import (
+    generate_image,
+    ImageGenerationError,
+    MODELS,
+    VALID_ASPECT_RATIOS,
+    VALID_SIZES,
+    DEFAULT_TIMEOUT,
+)
 
 
 def _make_api_response(*, image_data: bytes = b"\x89PNG\r\n", text: str | None = None):
@@ -39,7 +46,7 @@ class TestPayloadStructure:
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
         captured_payload = {}
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             captured_payload.update(json.loads(req.data.decode("utf-8")))
             resp = MagicMock()
             resp.read.return_value = json.dumps(_make_api_response()).encode()
@@ -62,7 +69,7 @@ class TestPayloadStructure:
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
         captured_payload = {}
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             captured_payload.update(json.loads(req.data.decode("utf-8")))
             resp = MagicMock()
             resp.read.return_value = json.dumps(_make_api_response()).encode()
@@ -82,6 +89,30 @@ class TestPayloadStructure:
         assert cfg["imageConfig"]["aspectRatio"] == "16:9"
         assert cfg["imageConfig"]["imageSize"] == "2K"
 
+    def test_タイムアウトが渡される(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        captured_timeout = {}
+
+        def mock_urlopen(req, timeout=None):
+            captured_timeout["value"] = timeout
+            resp = MagicMock()
+            resp.read.return_value = json.dumps(_make_api_response()).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = MagicMock(return_value=False)
+            return resp
+
+        with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
+            generate_image(
+                prompt="test",
+                output_path=str(tmp_path / "out.png"),
+                timeout=30,
+            )
+
+        assert captured_timeout["value"] == 30
+
+    def test_デフォルトタイムアウトは60秒(self):
+        assert DEFAULT_TIMEOUT == 60
+
 
 class TestImageSaving:
     """画像ファイルの保存を検証する"""
@@ -90,7 +121,7 @@ class TestImageSaving:
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
         image_bytes = b"\x89PNG_TEST_DATA"
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             resp = MagicMock()
             resp.read.return_value = json.dumps(
                 _make_api_response(image_data=image_bytes)
@@ -111,7 +142,7 @@ class TestImageSaving:
     def test_出力ディレクトリが自動作成される(self, tmp_path, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             resp = MagicMock()
             resp.read.return_value = json.dumps(_make_api_response()).encode()
             resp.__enter__ = lambda s: resp
@@ -126,41 +157,51 @@ class TestImageSaving:
 
 
 class TestErrorHandling:
-    """エラーハンドリングを検証する"""
+    """エラーハンドリングを検証する（例外ベース）"""
 
-    def test_GEMINI_API_KEY未設定でexit(self, monkeypatch):
+    def test_GEMINI_API_KEY未設定でImageGenerationError(self, monkeypatch):
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ImageGenerationError, match="GEMINI_API_KEY"):
             generate_image(prompt="test")
 
-    def test_HTTPErrorでexit(self, tmp_path, monkeypatch):
+    def test_HTTPErrorでImageGenerationError(self, tmp_path, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             raise urllib.error.HTTPError(
                 url="http://test", code=400, msg="Bad Request",
                 hdrs=None, fp=MagicMock(read=lambda: b"error body"),
             )
 
         with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
-            with pytest.raises(SystemExit):
+            with pytest.raises(ImageGenerationError, match="API error 400"):
                 generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
 
-    def test_URLErrorでexit(self, tmp_path, monkeypatch):
+    def test_URLErrorでImageGenerationError(self, tmp_path, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             raise urllib.error.URLError("DNS resolution failed")
 
         with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
-            with pytest.raises(SystemExit):
+            with pytest.raises(ImageGenerationError, match="Network error"):
                 generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
 
-    def test_画像なしレスポンスでexit(self, tmp_path, monkeypatch):
+    def test_TimeoutErrorでImageGenerationError(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+        def mock_urlopen(req, timeout=None):
+            raise TimeoutError("Connection timed out")
+
+        with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
+            with pytest.raises(ImageGenerationError, match="Network error"):
+                generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
+
+    def test_画像なしレスポンスでImageGenerationError(self, tmp_path, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "test-key")
         empty_response = {"candidates": [{"content": {"parts": [{"text": "no image"}]}}]}
 
-        def mock_urlopen(req):
+        def mock_urlopen(req, timeout=None):
             resp = MagicMock()
             resp.read.return_value = json.dumps(empty_response).encode()
             resp.__enter__ = lambda s: resp
@@ -168,7 +209,21 @@ class TestErrorHandling:
             return resp
 
         with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
-            with pytest.raises(SystemExit):
+            with pytest.raises(ImageGenerationError, match="No image data"):
+                generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
+
+    def test_candidatesが空でImageGenerationError(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+        def mock_urlopen(req, timeout=None):
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"candidates": []}).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = MagicMock(return_value=False)
+            return resp
+
+        with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
+            with pytest.raises(ImageGenerationError, match="No candidates"):
                 generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
 
 

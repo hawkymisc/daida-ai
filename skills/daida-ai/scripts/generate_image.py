@@ -39,6 +39,12 @@ VALID_ASPECT_RATIOS = [
 
 VALID_SIZES = ["512", "1K", "2K", "4K"]
 
+DEFAULT_TIMEOUT = 60
+
+
+class ImageGenerationError(Exception):
+    """画像生成処理中のエラー"""
+
 
 def generate_image(
     prompt: str,
@@ -46,11 +52,27 @@ def generate_image(
     aspect_ratio: str = "1:1",
     image_size: str = "1K",
     output_path: str = "output.png",
+    timeout: int = DEFAULT_TIMEOUT,
 ) -> str:
+    """Gemini APIで画像を生成し、ファイルに保存する。
+
+    Args:
+        prompt: 画像生成プロンプト
+        model: Geminiモデル名
+        aspect_ratio: アスペクト比
+        image_size: 画像サイズ
+        output_path: 出力ファイルパス
+        timeout: APIリクエストタイムアウト（秒）
+
+    Returns:
+        保存した画像ファイルのパス
+
+    Raises:
+        ImageGenerationError: API呼び出しや画像抽出に失敗した場合
+    """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
-        sys.exit(1)
+        raise ImageGenerationError("GEMINI_API_KEY environment variable is not set.")
 
     url = f"{API_BASE}/{model}:generateContent?key={api_key}"
 
@@ -78,22 +100,20 @@ def generate_image(
     )
 
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             result = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        print(f"API error {e.code}: {body}", file=sys.stderr)
-        sys.exit(1)
+        raise ImageGenerationError(f"API error {e.code}: {body}") from e
     except (urllib.error.URLError, TimeoutError) as e:
-        print(f"Network error: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise ImageGenerationError(f"Network error: {e}") from e
 
     # Extract image from response
     candidates = result.get("candidates", [])
     if not candidates:
-        print("Error: No candidates in response.", file=sys.stderr)
-        print(json.dumps(result, indent=2), file=sys.stderr)
-        sys.exit(1)
+        raise ImageGenerationError(
+            f"No candidates in response: {json.dumps(result, indent=2)}"
+        )
 
     text_parts = []
     image_saved = False
@@ -120,9 +140,10 @@ def generate_image(
         print(f"Model text: {' '.join(text_parts)}")
 
     if not image_saved:
-        print("Warning: No image data found in response.", file=sys.stderr)
-        print(json.dumps(result, indent=2, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
+        raise ImageGenerationError(
+            f"No image data found in response: "
+            f"{json.dumps(result, indent=2, ensure_ascii=False)}"
+        )
 
     return output_path
 
@@ -148,18 +169,29 @@ def main():
         choices=VALID_SIZES,
         help="Image size (default: 1K)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=DEFAULT_TIMEOUT,
+        help=f"API request timeout in seconds (default: {DEFAULT_TIMEOUT})",
+    )
     args = parser.parse_args()
 
     # Resolve model alias
     model = MODELS.get(args.model, args.model)
 
-    generate_image(
-        prompt=args.prompt,
-        model=model,
-        aspect_ratio=args.aspect_ratio,
-        image_size=args.size,
-        output_path=args.output,
-    )
+    try:
+        generate_image(
+            prompt=args.prompt,
+            model=model,
+            aspect_ratio=args.aspect_ratio,
+            image_size=args.size,
+            output_path=args.output,
+            timeout=args.timeout,
+        )
+    except ImageGenerationError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

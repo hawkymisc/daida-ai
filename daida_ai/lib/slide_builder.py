@@ -106,7 +106,28 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
     left = Emu((slide_w - int(width)) // 2)
     top_pos = Emu(top + (max_h - int(height)) // 2)
 
-    slide.shapes.add_picture(str(path), left, top_pos, width, height)
+    return slide.shapes.add_picture(str(path), left, top_pos, width, height)
+
+
+def _send_to_back(slide, shape) -> None:
+    """シェイプをspTree内の最前面から最背面に移動する。"""
+    spTree = slide.element.find(
+        ".//{http://schemas.openxmlformats.org/presentationml/2006/main}cSld/"
+        "{http://schemas.openxmlformats.org/presentationml/2006/main}spTree"
+    )
+    if spTree is None:
+        return
+    sp_el = shape._element
+    spTree.remove(sp_el)
+    # spTree の最初の子要素（nvGrpSpPr, grpSpPr）の後に挿入
+    insert_idx = 0
+    for i, child in enumerate(spTree):
+        tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+        if tag in ("nvGrpSpPr", "grpSpPr"):
+            insert_idx = i + 1
+        else:
+            break
+    spTree.insert(insert_idx, sp_el)
 
 
 def _add_title_slide(prs, spec: Slide) -> None:
@@ -118,7 +139,8 @@ def _add_title_slide(prs, spec: Slide) -> None:
     if spec.subtitle and 1 in phs:
         phs[1].text = spec.subtitle
     if spec.image:
-        _insert_image(slide, spec.image)
+        pic = _insert_image(slide, spec.image)
+        _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 
@@ -128,7 +150,8 @@ def _add_section_header(prs, spec: Slide) -> None:
     if slide.shapes.title:
         slide.shapes.title.text = spec.title
     if spec.image:
-        _insert_image(slide, spec.image)
+        pic = _insert_image(slide, spec.image)
+        _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 

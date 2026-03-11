@@ -261,11 +261,35 @@ class TestImageInsertion:
         pics = _find_pictures(prs.slides[0])
         assert len(pics) == 1
 
+    def test_title_slideの画像はテキストの背面にある(self, sample_image):
+        """title_slideの画像はプレースホルダより背面(z-order前方)に配置される"""
+        spec = self._make_spec(
+            "title_slide", sample_image, title="表紙", subtitle="サブ",
+        )
+        prs = build_presentation(spec)
+        slide = prs.slides[0]
+        shapes = list(slide.shapes)
+        pic_indices = [i for i, s in enumerate(shapes) if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        ph_indices = [i for i, s in enumerate(shapes) if s.shape_type != MSO_SHAPE_TYPE.PICTURE and s._element.ph is not None]
+        # 画像のインデックスがプレースホルダより小さい = 背面
+        assert all(pi < phi for pi in pic_indices for phi in ph_indices), \
+            f"pic at {pic_indices} should be behind placeholders at {ph_indices}"
+
     def test_section_headerに画像が挿入される(self, sample_image):
         spec = self._make_spec("section_header", sample_image, title="セクション")
         prs = build_presentation(spec)
         pics = _find_pictures(prs.slides[0])
         assert len(pics) == 1
+
+    def test_section_headerの画像はテキストの背面にある(self, sample_image):
+        spec = self._make_spec("section_header", sample_image, title="セクション")
+        prs = build_presentation(spec)
+        slide = prs.slides[0]
+        shapes = list(slide.shapes)
+        pic_indices = [i for i, s in enumerate(shapes) if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        ph_indices = [i for i, s in enumerate(shapes) if s.shape_type != MSO_SHAPE_TYPE.PICTURE and s._element.ph is not None]
+        assert all(pi < phi for pi in pic_indices for phi in ph_indices), \
+            f"pic at {pic_indices} should be behind placeholders at {ph_indices}"
 
     def test_title_onlyに画像が挿入される(self, sample_image):
         spec = self._make_spec("title_only", sample_image, title="図")

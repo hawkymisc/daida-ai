@@ -54,7 +54,12 @@ def main():
         sys.exit(1)
 
     template_path = _resolve_template(spec.metadata.template, args.template)
-    prs = build_presentation(spec, template_path=template_path)
+
+    try:
+        prs = build_presentation(spec, template_path=template_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(args.output))

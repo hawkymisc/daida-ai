@@ -23,6 +23,9 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["daida_ai*"]
 
+[tool.setuptools.package-data]
+daida_ai = ["assets/*.pptx"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

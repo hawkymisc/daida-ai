@@ -57,7 +57,8 @@ def generate_image(
     payload = {
         "contents": [
             {
-                "parts": [{"text": prompt}]
+                "role": "user",
+                "parts": [{"text": prompt}],
             }
         ],
         "generationConfig": {
@@ -82,6 +83,9 @@ def generate_image(
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         print(f"API error {e.code}: {body}", file=sys.stderr)
+        sys.exit(1)
+    except (urllib.error.URLError, TimeoutError) as e:
+        print(f"Network error: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Extract image from response

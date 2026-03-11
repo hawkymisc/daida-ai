@@ -3,15 +3,21 @@
 import pytest
 from pathlib import Path
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches, Pt, Emu
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from daida_ai.lib.slide_spec import (
     SlideSpec,
     SlideMetadata,
     Slide,
     TwoColumnContent,
+    validate_slide_spec,
 )
-from daida_ai.lib.slide_builder import build_presentation
+from daida_ai.lib.slide_builder import (
+    build_presentation,
+    _IMG_MAX_W,
+    _IMG_MAX_H,
+)
 
 
 @pytest.fixture
@@ -205,3 +211,128 @@ class TestBuildPresentationEdgeCases:
         )
         prs = build_presentation(spec)
         assert len(prs.slides) == 1
+
+
+def _find_pictures(slide):
+    """スライド内のPicture型シェイプ一覧を返す"""
+    return [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+
+
+class TestSlideSpecImage:
+    """Slide dataclassのimage フィールド"""
+
+    def test_imageフィールドのデフォルトはNone(self):
+        slide = Slide(layout="title_only", title="T")
+        assert slide.image is None
+
+    def test_imageフィールドにパスを設定できる(self):
+        slide = Slide(layout="title_only", title="T", image="/path/to/img.png")
+        assert slide.image == "/path/to/img.png"
+
+    def test_validate_slide_specでimageが保持される(self):
+        data = {
+            "metadata": {"title": "T", "subtitle": "S", "event": "E"},
+            "slides": [
+                {"layout": "title_only", "title": "図", "image": "fig.png"},
+            ],
+        }
+        spec = validate_slide_spec(data)
+        assert spec.slides[0].image == "fig.png"
+
+    def test_validate_slide_specでimage省略時はNone(self):
+        data = {
+            "metadata": {"title": "T", "subtitle": "S", "event": "E"},
+            "slides": [
+                {"layout": "title_only", "title": "図"},
+            ],
+        }
+        spec = validate_slide_spec(data)
+        assert spec.slides[0].image is None
+
+
+class TestImageInsertion:
+    """スライドへの画像挿入"""
+
+    def _make_spec(self, layout, image_path, **kwargs):
+        return SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout=layout, image=str(image_path), **kwargs)],
+        )
+
+    def test_title_onlyに画像が挿入される(self, sample_image):
+        spec = self._make_spec("title_only", sample_image, title="図")
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_blankに画像が挿入される(self, sample_image):
+        spec = self._make_spec("blank", sample_image)
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_title_and_contentに画像が挿入される(self, sample_image):
+        spec = self._make_spec(
+            "title_and_content", sample_image,
+            title="図付き", body=["テキスト"],
+        )
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_imageがNoneの場合は画像なし(self):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="No image")],
+        )
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 0
+
+    def test_画像がコンテンツ領域内に収まる(self, sample_image):
+        spec = self._make_spec("title_only", sample_image, title="図")
+        prs = build_presentation(spec)
+        pic = _find_pictures(prs.slides[0])[0]
+        assert pic.width <= _IMG_MAX_W
+        assert pic.height <= _IMG_MAX_H
+
+    def test_ワイド画像のアスペクト比が維持される(self, wide_image):
+        spec = self._make_spec("title_only", wide_image, title="ワイド")
+        prs = build_presentation(spec)
+        pic = _find_pictures(prs.slides[0])[0]
+        original_ratio = 800 / 200  # 4.0
+        actual_ratio = pic.width / pic.height
+        assert abs(actual_ratio - original_ratio) < 0.01
+
+    def test_縦長画像のアスペクト比が維持される(self, tall_image):
+        spec = self._make_spec("title_only", tall_image, title="縦長")
+        prs = build_presentation(spec)
+        pic = _find_pictures(prs.slides[0])[0]
+        original_ratio = 200 / 600  # 0.333...
+        actual_ratio = pic.width / pic.height
+        assert abs(actual_ratio - original_ratio) < 0.01
+
+    def test_画像パスが存在しない場合はFileNotFoundError(self):
+        spec = self._make_spec("title_only", "/nonexistent/image.png", title="図")
+        with pytest.raises(FileNotFoundError):
+            build_presentation(spec)
+
+    def test_画像付きスライドでノートが保持される(self, sample_image):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(
+                layout="title_only", title="図",
+                image=str(sample_image), note="画像の説明",
+            )],
+        )
+        prs = build_presentation(spec)
+        assert prs.slides[0].notes_slide.notes_text_frame.text == "画像の説明"
+
+    def test_画像付きPPTXを保存して再度開ける(self, sample_image, tmp_output_dir):
+        spec = self._make_spec("title_only", sample_image, title="保存テスト")
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "img_test.pptx"
+        prs.save(str(path))
+        reopened = Presentation(str(path))
+        pics = _find_pictures(reopened.slides[0])
+        assert len(pics) == 1

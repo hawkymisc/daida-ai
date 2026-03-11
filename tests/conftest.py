@@ -3,6 +3,7 @@
 import pytest
 from pathlib import Path
 import tempfile
+from PIL import Image
 
 
 @pytest.fixture
@@ -60,3 +61,30 @@ def tmp_output_dir():
     """一時出力ディレクトリ"""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
+
+
+@pytest.fixture
+def sample_image(tmp_output_dir) -> Path:
+    """テスト用の小さなPNG画像（320x240）"""
+    path = tmp_output_dir / "test_image.png"
+    img = Image.new("RGB", (320, 240), color=(70, 130, 180))
+    img.save(str(path))
+    return path
+
+
+@pytest.fixture
+def wide_image(tmp_output_dir) -> Path:
+    """テスト用のワイド画像（800x200）"""
+    path = tmp_output_dir / "wide_image.png"
+    img = Image.new("RGB", (800, 200), color=(200, 100, 50))
+    img.save(str(path))
+    return path
+
+
+@pytest.fixture
+def tall_image(tmp_output_dir) -> Path:
+    """テスト用の縦長画像（200x600）"""
+    path = tmp_output_dir / "tall_image.png"
+    img = Image.new("RGB", (200, 600), color=(50, 200, 100))
+    img.save(str(path))
+    return path

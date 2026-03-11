@@ -85,10 +85,9 @@ TEMPLATE_DESIGNS: dict[str, dict[str, str]] = {
     },
 }
 
-# ベーステンプレートのデフォルトパス
+# ベーステンプレートのデフォルトパス（パッケージ内に同梱）
 _DEFAULT_BASE_TEMPLATE = (
-    Path(__file__).resolve().parents[2]
-    / "skills" / "daida-ai" / "assets" / "templates" / "tech.pptx"
+    Path(__file__).resolve().parents[1] / "assets" / "base_template.pptx"
 )
 
 

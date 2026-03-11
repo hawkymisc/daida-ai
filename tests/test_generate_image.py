@@ -227,6 +227,41 @@ class TestErrorHandling:
                 generate_image(prompt="test", output_path=str(tmp_path / "out.png"))
 
 
+class TestMultipleCandidates:
+    """複数candidatesのレスポンス処理を検証する"""
+
+    def test_2番目のcandidateから画像を取得する(self, tmp_path, monkeypatch):
+        """最初のcandidateがテキストのみ、2番目に画像がある場合"""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        image_bytes = b"\x89PNG_SECOND"
+        response = {
+            "candidates": [
+                {"content": {"parts": [{"text": "safety block"}]}},
+                {"content": {"parts": [
+                    {"inlineData": {
+                        "mimeType": "image/png",
+                        "data": base64.b64encode(image_bytes).decode(),
+                    }}
+                ]}},
+            ],
+        }
+
+        def mock_urlopen(req, timeout=None):
+            resp = MagicMock()
+            resp.read.return_value = json.dumps(response).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = MagicMock(return_value=False)
+            return resp
+
+        with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
+            result = generate_image(
+                prompt="test",
+                output_path=str(tmp_path / "out.png"),
+            )
+
+        assert Path(result).read_bytes() == image_bytes
+
+
 class TestModelAliases:
     """モデルエイリアスの定数を検証する"""
 

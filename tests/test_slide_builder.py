@@ -366,6 +366,14 @@ class TestImageInsertion:
         with pytest.raises(FileNotFoundError):
             build_presentation(spec)
 
+    def test_不正な画像ファイルはFileNotFoundError(self, tmp_output_dir):
+        """壊れたファイルや非画像ファイルでもFileNotFoundErrorになる"""
+        bad_file = tmp_output_dir / "not_an_image.png"
+        bad_file.write_bytes(b"this is not a valid image")
+        spec = self._make_spec("title_only", bad_file, title="壊れた画像")
+        with pytest.raises(FileNotFoundError, match="Invalid image file"):
+            build_presentation(spec)
+
     def test_画像付きスライドでノートが保持される(self, sample_image):
         spec = SlideSpec(
             metadata=SlideMetadata(title="T", subtitle="S", event="E"),

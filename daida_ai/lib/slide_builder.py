@@ -85,14 +85,17 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
     4:3、16:9、カスタムサイズのテンプレートいずれにも対応する。
 
     Raises:
-        FileNotFoundError: 画像ファイルが存在しない
+        FileNotFoundError: 画像ファイルが存在しないか、読み取れない
     """
     path = Path(image_path)
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    with PILImage.open(str(path)) as img:
-        img_w, img_h = img.size
+    try:
+        with PILImage.open(str(path)) as img:
+            img_w, img_h = img.size
+    except (OSError, SyntaxError) as e:
+        raise FileNotFoundError(f"Invalid image file: {image_path} ({e})") from e
 
     slide_w, slide_h = _get_slide_size(slide)
     max_w, max_h, top = _calc_image_area(slide_w, slide_h, is_blank=is_blank)

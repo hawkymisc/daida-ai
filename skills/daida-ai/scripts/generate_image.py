@@ -118,23 +118,26 @@ def generate_image(
     text_parts = []
     image_saved = False
 
-    for part in candidates[0].get("content", {}).get("parts", []):
-        if "inlineData" in part:
-            mime_type = part["inlineData"].get("mimeType", "image/png")
-            ext = mime_type.split("/")[-1] if "/" in mime_type else "png"
-            # Adjust output extension if needed
-            if not output_path.endswith(f".{ext}"):
-                base, _ = os.path.splitext(output_path)
-                output_path = f"{base}.{ext}"
+    for candidate in candidates:
+        if image_saved:
+            break
+        for part in candidate.get("content", {}).get("parts", []):
+            if "inlineData" in part:
+                mime_type = part["inlineData"].get("mimeType", "image/png")
+                ext = mime_type.split("/")[-1] if "/" in mime_type else "png"
+                # Adjust output extension if needed
+                if not output_path.endswith(f".{ext}"):
+                    base, _ = os.path.splitext(output_path)
+                    output_path = f"{base}.{ext}"
 
-            img_data = base64.b64decode(part["inlineData"]["data"])
-            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-            with open(output_path, "wb") as f:
-                f.write(img_data)
-            image_saved = True
-            print(f"Image saved: {output_path} ({len(img_data)} bytes)")
-        elif "text" in part:
-            text_parts.append(part["text"])
+                img_data = base64.b64decode(part["inlineData"]["data"])
+                os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+                with open(output_path, "wb") as f:
+                    f.write(img_data)
+                image_saved = True
+                print(f"Image saved: {output_path} ({len(img_data)} bytes)")
+            elif "text" in part:
+                text_parts.append(part["text"])
 
     if text_parts:
         print(f"Model text: {' '.join(text_parts)}")

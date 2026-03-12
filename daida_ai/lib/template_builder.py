@@ -18,6 +18,9 @@ from lxml import etree
 _A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
+_SLIDE_W = 12191695  # 16:9 スライド幅 (EMU)
+_SLIDE_H = 6858000   # 16:9 スライド高さ (EMU)
+
 # テンプレートデザイン定義
 TEMPLATE_DESIGNS: dict[str, dict[str, str]] = {
     "tech": {
@@ -85,6 +88,91 @@ TEMPLATE_DESIGNS: dict[str, dict[str, str]] = {
     },
 }
 
+DECORATION_CONFIGS: dict[str, list[dict]] = {
+    "tech": [],  # ダークテーマで十分差別化
+    "casual": [
+        {
+            "id": 101, "name": "Bottom Strip",
+            "x": 0, "y": _SLIDE_H - 342900,
+            "cx": _SLIDE_W, "cy": 342900,
+            "prst": "rect",
+            "fill_scheme": "accent1",
+        },
+        {
+            "id": 102, "name": "Accent Circle 1",
+            "x": _SLIDE_W - 900000, "y": _SLIDE_H - 700000,
+            "cx": 250000, "cy": 250000,
+            "prst": "ellipse",
+            "fill_scheme": "accent2",
+        },
+        {
+            "id": 103, "name": "Accent Circle 2",
+            "x": _SLIDE_W - 600000, "y": _SLIDE_H - 550000,
+            "cx": 200000, "cy": 200000,
+            "prst": "ellipse",
+            "fill_scheme": "accent3",
+        },
+    ],
+    "formal": [
+        {
+            "id": 101, "name": "Top Line",
+            "x": 0, "y": 0,
+            "cx": _SLIDE_W, "cy": 36000,
+            "prst": "rect",
+            "fill_scheme": "dk1",
+        },
+        {
+            "id": 102, "name": "Bottom Line",
+            "x": 0, "y": _SLIDE_H - 36000,
+            "cx": _SLIDE_W, "cy": 36000,
+            "prst": "rect",
+            "fill_scheme": "dk1",
+        },
+    ],
+}
+
+_PH_ADJUSTMENTS: dict[str, dict[tuple[str, str | None], dict[str, int]]] = {
+    "ppt/slideMasters/slideMaster1.xml": {
+        ("title", None):  {"cx": 11277295},
+        ("body", "1"):    {"cx": 11277295},
+        ("dt", "2"):      {"cx": 3425898},
+        ("ftr", "3"):     {"x": 3883098, "cx": 3425898},
+        ("sldNum", "4"):  {"x": 7308996, "cx": 3425898},
+    },
+    "ppt/slideLayouts/slideLayout1.xml": {
+        ("ctrTitle", None): {"cx": 10820095},
+        ("subTitle", "1"):  {"cx": 9448495},
+    },
+    "ppt/slideLayouts/slideLayout3.xml": {
+        ("title", None): {"cx": 10747069},
+        ("body", "1"):   {"cx": 10747069},
+    },
+    "ppt/slideLayouts/slideLayout4.xml": {
+        ("body", "1"): {"cx": 5562447},
+        ("body", "2"): {"x": 6172047, "cx": 5562447},
+    },
+    "ppt/slideLayouts/slideLayout5.xml": {
+        ("body", "1"): {"cx": 5562447},
+        ("body", "2"): {"cx": 5562447},
+        ("body", "3"): {"x": 6172047, "cx": 5562447},
+        ("body", "4"): {"x": 6172047, "cx": 5562447},
+    },
+    "ppt/slideLayouts/slideLayout8.xml": {
+        ("title", None): {"cx": 3425898},
+        ("body", "1"):   {"x": 3883098, "cx": 7851397},
+        ("body", "2"):   {"cx": 3425898},
+    },
+    "ppt/slideLayouts/slideLayout9.xml": {
+        ("title", None): {"x": 1828800, "cx": 8534095},
+        ("pic", "1"):    {"x": 1828800, "cx": 8534095},
+        ("body", "2"):   {"x": 1828800, "cx": 8534095},
+    },
+    "ppt/slideLayouts/slideLayout11.xml": {
+        ("body", "1"):   {"cx": 9067495},
+        ("title", None): {"x": 9677095},
+    },
+}
+
 # ベーステンプレートのデフォルトパス（パッケージ内に同梱）
 _DEFAULT_BASE_TEMPLATE = (
     Path(__file__).resolve().parents[1] / "assets" / "base_template.pptx"
@@ -121,13 +209,26 @@ def build_template(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     src = base_template or _DEFAULT_BASE_TEMPLATE
+    is_default_base = base_template is None
     # ベーステンプレートをコピーしてから内部XMLを書き換え
     shutil.copy2(str(src), str(output_path))
-    _apply_design(output_path, design)
+    _apply_design(output_path, design, name, is_default_base=is_default_base)
 
 
-def _apply_design(pptx_path: Path, design: dict[str, str]) -> None:
-    """PPTXファイル内のテーマ・マスターXMLを書き換える。"""
+def _apply_design(
+    pptx_path: Path,
+    design: dict[str, str],
+    name: str,
+    *,
+    is_default_base: bool = True,
+) -> None:
+    """PPTXファイル内のテーマ・マスターXMLを書き換える。
+
+    Args:
+        is_default_base: 同梱ベーステンプレートを使用しているか。
+            Falseの場合、プレースホルダ座標調整と装飾シェイプ追加をスキップする。
+    """
+    nsmap = {"a": _A_NS, "p": _P_NS}
     # zipは in-place 更新不可なので、全エントリをメモリに読み込み→書き戻し
     zip_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
     with zipfile.ZipFile(str(pptx_path), "r") as zf:
@@ -149,9 +250,43 @@ def _apply_design(pptx_path: Path, design: dict[str, str]) -> None:
     master_data = next(d for zi, d in zip_entries if zi.filename == "ppt/slideMasters/slideMaster1.xml")
     master_root = etree.fromstring(master_data)
     _apply_background(master_root, design)
+    if is_default_base:
+        _add_decorations(master_root, name)
     updated["ppt/slideMasters/slideMaster1.xml"] = etree.tostring(
         master_root, xml_declaration=True, encoding="UTF-8", standalone=True
     )
+
+    # プレースホルダ調整（デフォルトベーステンプレートのみ）
+    if is_default_base:
+        for xml_path, adjustments in _PH_ADJUSTMENTS.items():
+            data = updated.get(xml_path) or next(
+                (d for zi, d in zip_entries if zi.filename == xml_path), None
+            )
+            if data is None:
+                continue
+            root = etree.fromstring(data)
+            spTree = root.find(".//p:cSld/p:spTree", nsmap)
+            for sp in spTree.findall("p:sp", nsmap):
+                nvPr = sp.find("p:nvSpPr/p:nvPr", nsmap)
+                ph = nvPr.find("p:ph", nsmap) if nvPr is not None else None
+                if ph is None:
+                    continue
+                ph_type = ph.get("type", "body")
+                ph_idx = ph.get("idx")
+                key = (ph_type, ph_idx)
+                if key not in adjustments:
+                    continue
+                xfrm = sp.find("p:spPr/a:xfrm", nsmap)
+                if xfrm is None:
+                    continue
+                adj = adjustments[key]
+                if "x" in adj:
+                    xfrm.find("a:off", nsmap).set("x", str(adj["x"]))
+                if "cx" in adj:
+                    xfrm.find("a:ext", nsmap).set("cx", str(adj["cx"]))
+            updated[xml_path] = etree.tostring(
+                root, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
 
     # 元のZipInfoを保持して書き戻し
     buf = BytesIO()
@@ -222,24 +357,74 @@ def _apply_theme_name(theme_root: etree._Element, design: dict[str, str]) -> Non
 
 
 def _apply_background(master_root: etree._Element, design: dict[str, str]) -> None:
-    """スライドマスターの背景を solidFill に書き換える。"""
+    """スライドマスターの背景を bgRef 方式で設定する。
+
+    bgRef idx="1001" はテーマの bgFillStyleLst 第1エントリを参照し、
+    schemeClr val="bg1" で lt1 カラー（= bg_color）に解決される。
+    """
     nsmap = {"a": _A_NS, "p": _P_NS}
     cSld = master_root.find("p:cSld", nsmap)
     if cSld is None:
         return
 
-    # 既存の <p:bg> を削除
     existing_bg = cSld.find("p:bg", nsmap)
     if existing_bg is not None:
         cSld.remove(existing_bg)
 
-    # 新しい <p:bg> を cSld の先頭に挿入
     bg = etree.Element(_qn("p:bg"))
-    bgPr = etree.SubElement(bg, _qn("p:bgPr"))
-    solidFill = etree.SubElement(bgPr, _qn("a:solidFill"))
-    srgbClr = etree.SubElement(solidFill, _qn("a:srgbClr"))
-    srgbClr.set("val", design["bg_color"])
-    etree.SubElement(bgPr, _qn("a:effectLst"))
+    bgRef = etree.SubElement(bg, _qn("p:bgRef"))
+    bgRef.set("idx", "1001")
+    schemeClr = etree.SubElement(bgRef, _qn("a:schemeClr"))
+    schemeClr.set("val", "bg1")
 
-    # cSld の最初の子として挿入（spTree より前）
     cSld.insert(0, bg)
+
+
+def _add_decorations(master_root: etree._Element, name: str) -> None:
+    """スライドマスターに装飾シェイプを追加する。
+
+    装飾はプレースホルダより背面に描画するため、spTree 内の最初の
+    p:sp（プレースホルダ）の直前に挿入する。
+    """
+    configs = DECORATION_CONFIGS.get(name, [])
+    if not configs:
+        return
+    nsmap = {"a": _A_NS, "p": _P_NS}
+    spTree = master_root.find(".//p:cSld/p:spTree", nsmap)
+    # 最初の p:sp の位置を特定（grpSpPr 等の後）
+    first_sp_idx = next(
+        (i for i, child in enumerate(spTree) if child.tag == _qn("p:sp")),
+        len(spTree),
+    )
+    for offset, cfg in enumerate(configs):
+        spTree.insert(first_sp_idx + offset, _build_decoration_shape(cfg))
+
+
+def _build_decoration_shape(cfg: dict) -> etree._Element:
+    """装飾シェイプの p:sp 要素を生成する。"""
+    sp = etree.Element(_qn("p:sp"))
+    nvSpPr = etree.SubElement(sp, _qn("p:nvSpPr"))
+    cNvPr = etree.SubElement(nvSpPr, _qn("p:cNvPr"))
+    cNvPr.set("id", str(cfg["id"]))
+    cNvPr.set("name", cfg["name"])
+    etree.SubElement(nvSpPr, _qn("p:cNvSpPr"))
+    etree.SubElement(nvSpPr, _qn("p:nvPr"))
+    spPr = etree.SubElement(sp, _qn("p:spPr"))
+    xfrm = etree.SubElement(spPr, _qn("a:xfrm"))
+    off = etree.SubElement(xfrm, _qn("a:off"))
+    off.set("x", str(cfg["x"]))
+    off.set("y", str(cfg["y"]))
+    ext = etree.SubElement(xfrm, _qn("a:ext"))
+    ext.set("cx", str(cfg["cx"]))
+    ext.set("cy", str(cfg["cy"]))
+    prstGeom = etree.SubElement(spPr, _qn("a:prstGeom"))
+    prstGeom.set("prst", cfg["prst"])
+    etree.SubElement(prstGeom, _qn("a:avLst"))
+    solidFill = etree.SubElement(spPr, _qn("a:solidFill"))
+    schemeClr = etree.SubElement(solidFill, _qn("a:schemeClr"))
+    schemeClr.set("val", cfg["fill_scheme"])
+    ln = etree.SubElement(spPr, _qn("a:ln"))
+    etree.SubElement(ln, _qn("a:noFill"))
+    return sp
+
+

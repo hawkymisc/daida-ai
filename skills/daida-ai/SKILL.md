@@ -232,6 +232,11 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
 あなた（Claude）がSVGコードを直接生成する。
 **SVGファイルはスライド仕様JSONの `image` フィールドにそのまま指定できる**（ビルド時に自動でPNGに変換される）。
 
+**前提条件**: `cairosvg` がインストールされていること（`setup.sh` 実行済みなら自動インストール済み）。未インストールの場合:
+```bash
+pip install cairosvg
+```
+
 #### 手順
 
 1. **Write ツール**で SVG ファイルを `output/images/` に作成する

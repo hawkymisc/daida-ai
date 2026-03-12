@@ -95,6 +95,21 @@ class TestErrorHandling:
         with pytest.raises(SVGConversionError):
             convert_svg_to_png(str(bad_svg), str(png_path))
 
+    def test_不正SVGの一時ファイル変換失敗時にリークしない(self, tmp_path):
+        """output_path=Noneで一時ファイル生成後、変換失敗時に削除される"""
+        import glob
+
+        bad_svg = tmp_path / "bad.svg"
+        bad_svg.write_text("not svg")
+
+        before = set(glob.glob("/tmp/tmp*.png"))
+        with pytest.raises(SVGConversionError):
+            convert_svg_to_png(str(bad_svg))
+        after = set(glob.glob("/tmp/tmp*.png"))
+
+        leaked = after - before
+        assert len(leaked) == 0, f"Temp files leaked: {leaked}"
+
     def test_cairosvg未インストール時のエラーメッセージ(self, tmp_path):
         """cairosvgがない環境ではわかりやすいエラーを出す"""
         import daida_ai.lib.svg_convert as mod

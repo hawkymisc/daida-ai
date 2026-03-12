@@ -47,7 +47,8 @@ def convert_svg_to_png(
     if not path.exists():
         raise SVGConversionError(f"SVG file not found: {svg_path}")
 
-    if output_path is None:
+    is_temp = output_path is None
+    if is_temp:
         # 一時ファイルを原子的に作成（TOCTOU防止）
         fd, output_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
@@ -61,6 +62,8 @@ def convert_svg_to_png(
             scale=scale,
         )
     except Exception as e:
+        if is_temp:
+            Path(output_path).unlink(missing_ok=True)
         raise SVGConversionError(f"SVG conversion failed: {e}") from e
 
     return output_path

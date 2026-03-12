@@ -262,6 +262,42 @@ class TestMultipleCandidates:
         assert Path(result).read_bytes() == image_bytes
 
 
+class TestOutputPathPreserved:
+    """出力パスがMIMEタイプによって変更されないことを検証する"""
+
+    def test_JPEG応答でもpng拡張子が維持される(self, tmp_path, monkeypatch):
+        """APIがimage/jpegを返しても、指定した.pngパスに保存される"""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        image_bytes = b"\xff\xd8\xff\xe0JPEG_DATA"
+        response = {
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "inlineData": {
+                            "mimeType": "image/jpeg",
+                            "data": base64.b64encode(image_bytes).decode(),
+                        }
+                    }]
+                }
+            }],
+        }
+
+        def mock_urlopen(req, timeout=None):
+            resp = MagicMock()
+            resp.read.return_value = json.dumps(response).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = MagicMock(return_value=False)
+            return resp
+
+        output = str(tmp_path / "diagram.png")
+        with patch("generate_image.urllib.request.urlopen", side_effect=mock_urlopen):
+            result = generate_image(prompt="test", output_path=output)
+
+        assert result == output
+        assert Path(result).name == "diagram.png"
+        assert Path(result).read_bytes() == image_bytes
+
+
 class TestModelAliases:
     """モデルエイリアスの定数を検証する"""
 

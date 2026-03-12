@@ -404,3 +404,26 @@ class TestImageInsertion:
         reopened = Presentation(str(path))
         pics = _find_pictures(reopened.slides[0])
         assert len(pics) == 1
+
+    def test_相対パスがbase_dirで解決される(self, tmp_path):
+        """base_dir指定時に相対パスが正しく解決される"""
+        img_dir = tmp_path / "images"
+        img_dir.mkdir()
+        img_path = img_dir / "test.png"
+        from PIL import Image
+        Image.new("RGB", (100, 100), "blue").save(str(img_path))
+        # 相対パス "images/test.png" を使う
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="相対パス", image="images/test.png")],
+        )
+        prs = build_presentation(spec, base_dir=tmp_path)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_base_dir未指定で絶対パスは動作する(self, sample_image):
+        """base_dir=Noneでも絶対パスなら正常動作"""
+        spec = self._make_spec("title_only", sample_image, title="絶対パス")
+        prs = build_presentation(spec, base_dir=None)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1

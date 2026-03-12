@@ -78,7 +78,7 @@ def _calc_image_area(slide_w: int, slide_h: int, *, is_blank: bool = False):
     return max_w, max_h, top
 
 
-def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
+def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: Path | None = None) -> None:
     """スライドに画像を挿入する。アスペクト比を維持してコンテンツ領域に収める。
 
     スライドの実際のサイズから配置領域を動的に計算するため、
@@ -88,6 +88,8 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False) -> None:
         FileNotFoundError: 画像ファイルが存在しないか、読み取れない
     """
     path = Path(image_path)
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
@@ -133,7 +135,7 @@ def _send_to_back(slide, shape) -> None:
     spTree.insert(insert_idx, sp_el)
 
 
-def _add_title_slide(prs, spec: Slide) -> None:
+def _add_title_slide(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "title_slide")
     slide = prs.slides.add_slide(layout)
     phs = _get_placeholders(slide)
@@ -142,23 +144,23 @@ def _add_title_slide(prs, spec: Slide) -> None:
     if spec.subtitle and 1 in phs:
         phs[1].text = spec.subtitle
     if spec.image:
-        pic = _insert_image(slide, spec.image)
+        pic = _insert_image(slide, spec.image, base_dir=base_dir)
         _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 
-def _add_section_header(prs, spec: Slide) -> None:
+def _add_section_header(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "section_header")
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title:
         slide.shapes.title.text = spec.title
     if spec.image:
-        pic = _insert_image(slide, spec.image)
+        pic = _insert_image(slide, spec.image, base_dir=base_dir)
         _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 
-def _add_title_and_content(prs, spec: Slide) -> None:
+def _add_title_and_content(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "title_and_content")
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title:
@@ -176,11 +178,11 @@ def _add_title_and_content(prs, spec: Slide) -> None:
                 p.text = item
 
     if spec.image:
-        _insert_image(slide, spec.image)
+        _insert_image(slide, spec.image, base_dir=base_dir)
     _set_notes(slide, spec.note)
 
 
-def _add_two_content(prs, spec: Slide) -> None:
+def _add_two_content(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "two_content")
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title:
@@ -207,25 +209,25 @@ def _add_two_content(prs, spec: Slide) -> None:
             p.text = item
 
     if spec.image:
-        _insert_image(slide, spec.image)
+        _insert_image(slide, spec.image, base_dir=base_dir)
     _set_notes(slide, spec.note)
 
 
-def _add_title_only(prs, spec: Slide) -> None:
+def _add_title_only(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "title_only")
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title:
         slide.shapes.title.text = spec.title
     if spec.image:
-        _insert_image(slide, spec.image)
+        _insert_image(slide, spec.image, base_dir=base_dir)
     _set_notes(slide, spec.note)
 
 
-def _add_blank(prs, spec: Slide) -> None:
+def _add_blank(prs, spec: Slide, base_dir: Path | None = None) -> None:
     layout = _find_layout(prs, "blank")
     slide = prs.slides.add_slide(layout)
     if spec.image:
-        _insert_image(slide, spec.image, is_blank=True)
+        _insert_image(slide, spec.image, is_blank=True, base_dir=base_dir)
     _set_notes(slide, spec.note)
 
 
@@ -239,12 +241,17 @@ _BUILDERS = {
 }
 
 
-def build_presentation(spec: SlideSpec, template_path: str | None = None):
+def build_presentation(
+    spec: SlideSpec,
+    template_path: str | None = None,
+    base_dir: Path | None = None,
+):
     """SlideSpecからpython-pptx Presentationを生成する。
 
     Args:
         spec: スライド仕様
         template_path: カスタムテンプレートPPTXのパス（Noneでデフォルト）
+        base_dir: 画像の相対パスを解決するベースディレクトリ
 
     Returns:
         python-pptx Presentation オブジェクト
@@ -254,6 +261,6 @@ def build_presentation(spec: SlideSpec, template_path: str | None = None):
     for slide_spec in spec.slides:
         builder = _BUILDERS.get(slide_spec.layout)
         if builder:
-            builder(prs, slide_spec)
+            builder(prs, slide_spec, base_dir=base_dir)
 
     return prs

@@ -123,13 +123,6 @@ def generate_image(
             break
         for part in candidate.get("content", {}).get("parts", []):
             if "inlineData" in part:
-                mime_type = part["inlineData"].get("mimeType", "image/png")
-                ext = mime_type.split("/")[-1] if "/" in mime_type else "png"
-                # Adjust output extension if needed
-                if not output_path.endswith(f".{ext}"):
-                    base, _ = os.path.splitext(output_path)
-                    output_path = f"{base}.{ext}"
-
                 img_data = base64.b64decode(part["inlineData"]["data"])
                 os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
                 with open(output_path, "wb") as f:

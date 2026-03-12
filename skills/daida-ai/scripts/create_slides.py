@@ -58,7 +58,7 @@ def main():
     template_path = _resolve_template(spec.metadata.template, args.template)
 
     try:
-        prs = build_presentation(spec, template_path=template_path)
+        prs = build_presentation(spec, template_path=template_path, base_dir=args.input.parent)
     except (FileNotFoundError, PackageNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

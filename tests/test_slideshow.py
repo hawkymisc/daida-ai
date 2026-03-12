@@ -463,3 +463,131 @@ class TestXMLスキーマ順序:
         assert child_tags.index("transition") < child_tags.index("hf"), (
             f"transition must precede hf, got: {child_tags}"
         )
+
+
+class Testノートベースタイミング:
+    """音声なし・ノートありスライドにノート文字数ベースの送り時間が設定される"""
+
+    @pytest.fixture
+    def pptx_with_notes_no_audio(self, tmp_output_dir: Path) -> Path:
+        """音声なしだがスピーカーノート付きの3スライドPPTX"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(
+                    layout="title_and_content",
+                    title="内容",
+                    body=["a"],
+                    note="これは50文字程度のスピーカーノートです。発話に約10秒かかると想定されます。ここまでが本文。",
+                ),
+                Slide(layout="section_header", title="中表紙"),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "notes_no_audio.pptx"
+        prs.save(str(path))
+        return path
+
+    def test_ノートありスライドのadvTmがsilent_durationより長い(
+        self, pptx_with_notes_no_audio: Path, tmp_output_dir: Path
+    ):
+        """ノートがあるスライドはデフォルト3秒より長い送り時間が設定される"""
+        output = tmp_output_dir / "show_notes.pptx"
+        configure_slideshow(pptx_with_notes_no_audio, output, silent_duration_ms=3000)
+
+        prs = Presentation(str(output))
+        # スライド1はノートあり・音声なし → 3秒より長い
+        slide1_trans = prs.slides[1].element.find("p:transition", _ns)
+        adv_tm = int(slide1_trans.get("advTm"))
+        assert adv_tm > 3000, (
+            f"ノートありスライドは3秒より長いはず、実際: {adv_tm}ms"
+        )
+
+    def test_ノートなしスライドはsilent_durationが使われる(
+        self, pptx_with_notes_no_audio: Path, tmp_output_dir: Path
+    ):
+        """ノートのないスライド（表紙等）はデフォルトsilent_durationが使われる"""
+        output = tmp_output_dir / "show_notes.pptx"
+        configure_slideshow(pptx_with_notes_no_audio, output, silent_duration_ms=4000)
+
+        prs = Presentation(str(output))
+        # スライド0（表紙）はノートなし → silent_duration
+        slide0_trans = prs.slides[0].element.find("p:transition", _ns)
+        assert slide0_trans.get("advTm") == "4000"
+
+        # スライド2（中表紙）もノートなし → silent_duration
+        slide2_trans = prs.slides[2].element.find("p:transition", _ns)
+        assert slide2_trans.get("advTm") == "4000"
+
+    def test_長いノートは長いadvTmになる(self, tmp_output_dir: Path):
+        """300文字のノート vs 30文字のノートで、送り時間に差が出る"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(
+                    layout="title_and_content",
+                    title="短い",
+                    body=["a"],
+                    note="短いノートです。",
+                ),
+                Slide(
+                    layout="title_and_content",
+                    title="長い",
+                    body=["b"],
+                    note="これは非常に長いスピーカーノートです。" * 20,
+                ),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "note_length.pptx"
+        prs.save(str(path))
+
+        output = tmp_output_dir / "show_note_length.pptx"
+        configure_slideshow(path, output)
+
+        prs2 = Presentation(str(output))
+        short_adv = int(prs2.slides[0].element.find("p:transition", _ns).get("advTm"))
+        long_adv = int(prs2.slides[1].element.find("p:transition", _ns).get("advTm"))
+        assert long_adv > short_adv, (
+            f"長いノートのスライドはより長い送り時間のはず: "
+            f"short={short_adv}ms, long={long_adv}ms"
+        )
+
+    def test_ノートベースタイミングの最低値は3秒(self, tmp_output_dir: Path):
+        """非常に短いノートでも最低3秒は確保される"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(
+                    layout="title_and_content",
+                    title="極短",
+                    body=["a"],
+                    note="OK",
+                ),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "short_note.pptx"
+        prs.save(str(path))
+
+        output = tmp_output_dir / "show_short_note.pptx"
+        configure_slideshow(path, output)
+
+        prs2 = Presentation(str(output))
+        adv_tm = int(prs2.slides[0].element.find("p:transition", _ns).get("advTm"))
+        assert adv_tm >= 3000, f"最低3秒は必要: {adv_tm}ms"
+
+    def test_音声ありスライドはノートではなく音声ベース(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """音声が埋め込まれたスライドは音声デュレーションベースのまま"""
+        output = tmp_output_dir / "show_audio_priority.pptx"
+        configure_slideshow(pptx_with_audio, output)
+
+        prs = Presentation(str(output))
+        # スライド1は音声あり → 音声ベースのタイミング（ノートベースではない）
+        slide1_trans = prs.slides[1].element.find("p:transition", _ns)
+        adv_tm = int(slide1_trans.get("advTm"))
+        # ダミーMP3は非常に短い → audio_duration + buffer
+        assert adv_tm > 0

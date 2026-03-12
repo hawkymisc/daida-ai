@@ -187,16 +187,44 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh enrich_outline.py output/slide_spec.json
 ## Step 1.7: 画像生成（オプション）
 
 スライドに図やイラストを含めたい場合、画像を生成する。
-**内容に応じて**最適な方式を選択する。
 
 ### 方式の選択
 
-| 画像の内容 | 方式 | 条件 |
-|---|---|---|
-| 写真風・リアルイラスト・複雑なシーン | **Nano Banana**（Gemini API） | `GEMINI_API_KEY` 必要 |
-| ダイアグラム・フローチャート・概念図・アイコン | **SVG生成**（Claude直接作成） | API不要・即時生成 |
+以下のフローチャートに従って方式を決定する:
 
-**判断基準**: 図やチャートなら常にSVG。写真風画像が必要でAPIキーがあればNano Banana。
+```
+1. GEMINI_API_KEY は設定されているか？
+   ├─ No → 全て SVG で生成する（後述「SVG生成」セクション）
+   └─ Yes → 2へ
+2. 画像の内容は？
+   ├─ SVG向き（後述リスト参照） → 「SVG生成」セクションへ
+   └─ Nano Banana向き（後述リスト参照） → 「Nano Banana」セクションへ
+```
+
+#### SVG向き（Claude が直接生成）
+
+以下に該当する画像は **SVG** を使う。APIキー不要・即時生成・編集可能。
+
+- フローチャート・プロセス図・ステップ図
+- アーキテクチャ図・システム構成図
+- 比較図（Before/After、A vs B）
+- 棒グラフ・円グラフ・簡易チャート
+- アイコン・ロゴ・シンボル
+- タイムライン・ロードマップ
+- テーブル・マトリクス図
+- テキスト主体の概念図・マインドマップ
+
+#### Nano Banana向き（Gemini API で生成）
+
+以下に該当する画像は **Nano Banana** を使う。`GEMINI_API_KEY` が必要。
+
+- 写真風の背景・風景・人物
+- リアルな質感のイラスト・3Dレンダリング風
+- 具体的な物体の描写（製品写真風など）
+- 手書き風・水彩風・油絵風のアート
+- スクリーンショット風のモックアップ
+
+**迷ったらSVG**。SVGは即時生成でき、修正も容易。Nano Bananaは「SVGでは表現できないリアルさ」が必要な場合のみ使う。
 
 ### ユーザーに確認する
 - 画像が必要なスライドと、それぞれの内容
@@ -210,8 +238,8 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh enrich_outline.py output/slide_spec.json
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
-  --prompt "A futuristic system architecture diagram, clean flat design" \
-  --output output/images/slide3_photo.png \
+  --prompt "A professional conference stage with spotlight, modern tech event atmosphere" \
+  --output output/images/slide1_background.png \
   --aspect-ratio 16:9 \
   --size 1K \
   --model pro

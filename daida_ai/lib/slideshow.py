@@ -76,7 +76,9 @@ def configure_slideshow(
                 # 外部リンク/非MP3など計測不能 → フォールバック
                 advance_ms = unmeasurable_duration_ms + audio_buffer_ms
         else:
-            note_duration = _estimate_note_duration_ms(slide)
+            note_duration = _estimate_note_duration_ms(
+                slide, min_ms=silent_duration_ms
+            )
             if note_duration > 0:
                 advance_ms = note_duration
             else:
@@ -390,12 +392,19 @@ def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
     return etree.fromstring(timing_xml)
 
 
-def _estimate_note_duration_ms(slide) -> int:
+def _estimate_note_duration_ms(slide, *, min_ms: int = _MIN_NOTE_DURATION_MS) -> int:
     """スピーカーノートの文字数から発話時間を推定する（ミリ秒）。
 
     日本語の平均的な発話速度（約300文字/分）を基準に算出する。
     ノートが空の場合は0を返す。
+
+    Args:
+        slide: python-pptxのスライドオブジェクト
+        min_ms: 推定結果の最低値（ミリ秒）
     """
+    if not slide.has_notes_slide:
+        return 0
+
     try:
         note_text = slide.notes_slide.notes_text_frame.text
     except Exception:
@@ -406,7 +415,7 @@ def _estimate_note_duration_ms(slide) -> int:
         return 0
 
     duration_ms = int(len(stripped) / _CHARS_PER_SECOND * 1000)
-    return max(_MIN_NOTE_DURATION_MS, min(duration_ms, _MAX_NOTE_DURATION_MS))
+    return max(min_ms, min(duration_ms, _MAX_NOTE_DURATION_MS))
 
 
 def _find_audio_shape_ids(slide) -> list[int]:

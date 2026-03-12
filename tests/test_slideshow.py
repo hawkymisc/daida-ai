@@ -591,3 +591,62 @@ class Testノートベースタイミング:
         adv_tm = int(slide1_trans.get("advTm"))
         # ダミーMP3は非常に短い → audio_duration + buffer
         assert adv_tm > 0
+
+    def test_silent_duration指定時ノート付きスライドは最低silent_durationを使う(
+        self, tmp_output_dir: Path
+    ):
+        """silent_duration_ms=10000指定時、短いノートでも10秒未満にならない"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(
+                    layout="title_and_content",
+                    title="短ノート",
+                    body=["a"],
+                    note="OK",
+                ),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "silent_override.pptx"
+        prs.save(str(path))
+
+        output = tmp_output_dir / "show_silent_override.pptx"
+        configure_slideshow(path, output, silent_duration_ms=10000)
+
+        prs2 = Presentation(str(output))
+        adv_tm = int(prs2.slides[0].element.find("p:transition", _ns).get("advTm"))
+        assert adv_tm >= 10000, (
+            f"silent_duration_ms=10000が最低値として尊重されるべき: {adv_tm}ms"
+        )
+
+    def test_ノートなしスライドにnotesが勝手に作られない(
+        self, tmp_output_dir: Path
+    ):
+        """configure_slideshow後、ノートなしスライドに空のnotesが生成されない"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+            ],
+        )
+        prs = build_presentation(spec)
+        # build_presentationはnoteなしスライドにnotesを作らない可能性があるため、
+        # has_notes_slideの状態を記録
+        path = tmp_output_dir / "no_notes_mutation.pptx"
+        prs.save(str(path))
+
+        # 保存後の状態を確認
+        prs_before = Presentation(str(path))
+        had_notes_before = prs_before.slides[0].has_notes_slide
+
+        output = tmp_output_dir / "show_no_notes_mutation.pptx"
+        configure_slideshow(path, output)
+
+        prs_after = Presentation(str(output))
+        has_notes_after = prs_after.slides[0].has_notes_slide
+
+        if not had_notes_before:
+            assert not has_notes_after, (
+                "ノートなしスライドに空のnotesが勝手に作られてはいけない"
+            )

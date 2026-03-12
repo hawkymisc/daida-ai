@@ -194,11 +194,11 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh enrich_outline.py output/slide_spec.json
 
 ```
 1. GEMINI_API_KEY は設定されているか？
-   ├─ No → 全て SVG で生成する（Step A へ）
+   ├─ No → 全て SVG で生成する（後述「SVG生成」セクション）
    └─ Yes → 2へ
 2. 画像の内容は？
-   ├─ SVG向き（後述リスト参照） → SVG で生成する（Step A へ）
-   └─ Nano Banana向き（後述リスト参照） → Nano Banana で生成する（Step B へ）
+   ├─ SVG向き（後述リスト参照） → 「SVG生成」セクションへ
+   └─ Nano Banana向き（後述リスト参照） → 「Nano Banana」セクションへ
 ```
 
 #### SVG向き（Claude が直接生成）

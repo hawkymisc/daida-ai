@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 from PIL import Image as PILImage
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
-
-try:
-    import cairosvg as _cairosvg
-except ImportError:
-    _cairosvg = None
 
 from daida_ai.lib.slide_spec import SlideSpec, Slide, TwoColumnContent
 
@@ -90,19 +84,12 @@ def _convert_svg(svg_path: Path, original_path: str) -> Path:
     Raises:
         FileNotFoundError: cairosvg未インストール or 変換失敗時
     """
-    if _cairosvg is None:
-        raise FileNotFoundError(
-            f"SVG file requires cairosvg: pip install cairosvg ({original_path})"
-        )
+    from daida_ai.lib.svg_convert import convert_svg_to_png, SVGConversionError
+
     try:
-        png_path = Path(tempfile.mktemp(suffix=".png"))
-        _cairosvg.svg2png(
-            url=str(svg_path.resolve()),
-            write_to=str(png_path),
-            scale=2,
-        )
-        return png_path
-    except Exception as e:
+        png_path = convert_svg_to_png(str(svg_path))
+        return Path(png_path)
+    except SVGConversionError as e:
         raise FileNotFoundError(
             f"SVG conversion failed: {original_path} ({e})"
         ) from e
@@ -131,28 +118,34 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: P
         raise FileNotFoundError(f"Image not found: {image_path}")
 
     # SVG自動変換: .svg ファイルを検出し、PNGに変換してから挿入
+    temp_png = None
     if path.suffix.lower() == ".svg":
         path = _convert_svg(path, image_path)
+        temp_png = path
 
     try:
-        with PILImage.open(str(path)) as img:
-            img_w, img_h = img.size
-    except (OSError, SyntaxError) as e:
-        raise FileNotFoundError(f"Invalid image file: {image_path} ({e})") from e
+        try:
+            with PILImage.open(str(path)) as img:
+                img_w, img_h = img.size
+        except (OSError, SyntaxError) as e:
+            raise FileNotFoundError(f"Invalid image file: {image_path} ({e})") from e
 
-    slide_w, slide_h = _get_slide_size(slide)
-    max_w, max_h, top = _calc_image_area(slide_w, slide_h, is_blank=is_blank)
+        slide_w, slide_h = _get_slide_size(slide)
+        max_w, max_h, top = _calc_image_area(slide_w, slide_h, is_blank=is_blank)
 
-    # アスペクト比を維持してフィットさせる
-    scale = min(max_w / img_w, max_h / img_h)
-    width = Emu(int(img_w * scale))
-    height = Emu(int(img_h * scale))
+        # アスペクト比を維持してフィットさせる
+        scale = min(max_w / img_w, max_h / img_h)
+        width = Emu(int(img_w * scale))
+        height = Emu(int(img_h * scale))
 
-    # 水平中央, 垂直はコンテンツ領域内で中央
-    left = Emu((slide_w - int(width)) // 2)
-    top_pos = Emu(top + (max_h - int(height)) // 2)
+        # 水平中央, 垂直はコンテンツ領域内で中央
+        left = Emu((slide_w - int(width)) // 2)
+        top_pos = Emu(top + (max_h - int(height)) // 2)
 
-    return slide.shapes.add_picture(str(path), left, top_pos, width, height)
+        return slide.shapes.add_picture(str(path), left, top_pos, width, height)
+    finally:
+        if temp_png is not None:
+            temp_png.unlink(missing_ok=True)
 
 
 def _send_to_back(slide, shape) -> None:

@@ -1,14 +1,9 @@
-"""TDD: svg_to_png.py — SVG→PNG変換スクリプトのテスト"""
+"""TDD: svg_convert — SVG→PNG変換の共通ヘルパーテスト"""
 
-import sys
 from pathlib import Path
 import pytest
 
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "skills" / "daida-ai" / "scripts")
-)
-
-from svg_to_png import convert_svg_to_png, SVGConversionError
+from daida_ai.lib.svg_convert import convert_svg_to_png, SVGConversionError
 
 
 # テスト用SVG
@@ -102,18 +97,18 @@ class TestErrorHandling:
 
     def test_cairosvg未インストール時のエラーメッセージ(self, tmp_path):
         """cairosvgがない環境ではわかりやすいエラーを出す"""
-        import svg_to_png as mod
+        import daida_ai.lib.svg_convert as mod
 
         svg_path = tmp_path / "input.svg"
         svg_path.write_text(_MINIMAL_SVG)
 
-        original = mod.cairosvg
+        original = mod._cairosvg
         try:
-            mod.cairosvg = None
+            mod._cairosvg = None
             with pytest.raises(SVGConversionError, match="cairosvg is not installed"):
                 convert_svg_to_png(str(svg_path), str(tmp_path / "out.png"))
         finally:
-            mod.cairosvg = original
+            mod._cairosvg = original
 
 
 class TestSVGContent:

@@ -35,6 +35,12 @@ _MPEG2_L3_BITRATE = {
 
 _DEFAULT_UNMEASURABLE_DURATION_MS = 30000
 
+# ノートベースタイミング推定用
+# 日本語の平均的な発話速度: 約300文字/分 = 5文字/秒
+_CHARS_PER_SECOND = 5.0
+_MIN_NOTE_DURATION_MS = 3000
+_MAX_NOTE_DURATION_MS = 120000
+
 # ECMA-376 CT_Slide 子要素の正規順序
 # cSld, clrMapOvr?, transition?, timing?, hf?, extLst?
 _CT_SLIDE_ORDER = ["cSld", "clrMapOvr", "transition", "timing", "hf", "extLst"]
@@ -70,7 +76,13 @@ def configure_slideshow(
                 # 外部リンク/非MP3など計測不能 → フォールバック
                 advance_ms = unmeasurable_duration_ms + audio_buffer_ms
         else:
-            advance_ms = silent_duration_ms
+            note_duration = _estimate_note_duration_ms(
+                slide, min_ms=silent_duration_ms
+            )
+            if note_duration > 0:
+                advance_ms = note_duration
+            else:
+                advance_ms = silent_duration_ms
 
         # ECMA-376 CT_Slide: transition? は timing? より前に来る必要がある
         # transitionを先に設定してからtimingを追加する
@@ -378,6 +390,32 @@ def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
   </p:tnLst>
 </p:timing>"""
     return etree.fromstring(timing_xml)
+
+
+def _estimate_note_duration_ms(slide, *, min_ms: int = _MIN_NOTE_DURATION_MS) -> int:
+    """スピーカーノートの文字数から発話時間を推定する（ミリ秒）。
+
+    日本語の平均的な発話速度（約300文字/分）を基準に算出する。
+    ノートが空の場合は0を返す。
+
+    Args:
+        slide: python-pptxのスライドオブジェクト
+        min_ms: 推定結果の最低値（ミリ秒）
+    """
+    if not slide.has_notes_slide:
+        return 0
+
+    try:
+        note_text = slide.notes_slide.notes_text_frame.text
+    except Exception:
+        return 0
+
+    stripped = note_text.strip()
+    if not stripped:
+        return 0
+
+    duration_ms = int(len(stripped) / _CHARS_PER_SECOND * 1000)
+    return max(min_ms, min(duration_ms, _MAX_NOTE_DURATION_MS))
 
 
 def _find_audio_shape_ids(slide) -> list[int]:

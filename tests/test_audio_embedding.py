@@ -127,3 +127,109 @@ class TestEmbedAudio:
         ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
         audio_refs = slide0_xml.findall(".//a:audioFile", ns)
         assert len(audio_refs) > 0
+
+
+class TestPowerPoint互換性:
+    """PowerPointが要求するOOXML準拠の音声埋め込み構造を検証"""
+
+    _ns = {
+        "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "p14": "http://schemas.microsoft.com/office/powerpoint/2010/main",
+    }
+
+    def test_RT_AUDIOリレーションシップが存在する(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """audioFile r:linkはRT.AUDIO型のリレーションシップを参照すべき"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide0_rels = prs.slides[0].part.rels
+        audio_rels = [r for r in slide0_rels.values() if r.reltype == RT.AUDIO]
+        assert len(audio_rels) > 0, "RT.AUDIOリレーションシップが必要"
+
+    def test_audioFileのr_linkがRT_AUDIOを参照する(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """a:audioFile r:linkの参照先がRT.AUDIOリレーションシップであること"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide = prs.slides[0]
+        audio_file = slide.element.find(".//a:audioFile", self._ns)
+        r_link = audio_file.get(f"{{{self._ns['r']}}}link")
+
+        # r_linkが指すリレーションシップの型を確認
+        rel = slide.part.rels[r_link]
+        assert rel.reltype == RT.AUDIO, (
+            f"audioFile r:linkはRT.AUDIOを参照すべき、実際: {rel.reltype}"
+        )
+
+    def test_p14_media拡張要素が存在する(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """PowerPoint 2010+はp14:media拡張要素を要求する"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide_xml = prs.slides[0].element
+        p14_media = slide_xml.findall(".//p14:media", self._ns)
+        assert len(p14_media) > 0, "p14:media拡張要素が必要"
+
+    def test_p14_mediaのr_embedがRT_MEDIAを参照する(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """p14:media r:embedの参照先がRT.MEDIAリレーションシップであること"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide = prs.slides[0]
+        p14_media = slide.element.find(".//p14:media", self._ns)
+        r_embed = p14_media.get(f"{{{self._ns['r']}}}embed")
+
+        rel = slide.part.rels[r_embed]
+        assert rel.reltype == RT.MEDIA, (
+            f"p14:media r:embedはRT.MEDIAを参照すべき、実際: {rel.reltype}"
+        )
+
+    def test_blipにr_embed属性がある(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """a:blipにr:embed属性があり空でないこと"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide_xml = prs.slides[0].element
+        # 音声シェイプのblipを取得
+        pics = slide_xml.findall(".//p:pic", self._ns)
+        audio_pic = None
+        for pic in pics:
+            if pic.find(".//a:audioFile", self._ns) is not None:
+                audio_pic = pic
+                break
+        assert audio_pic is not None
+
+        blip = audio_pic.find(".//a:blip", self._ns)
+        r_embed = blip.get(f"{{{self._ns['r']}}}embed")
+        assert r_embed, "a:blipにr:embed属性が必要"
+
+    def test_hlinkClickのr_idが空でない(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """a:hlinkClick r:idが空文字列でないこと（または要素自体が不要）"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide_xml = prs.slides[0].element
+        hlink = slide_xml.find(".//a:hlinkClick", self._ns)
+        if hlink is not None:
+            r_id = hlink.get(f"{{{self._ns['r']}}}id")
+            assert r_id != "", "hlinkClick r:idは空文字列であってはならない"

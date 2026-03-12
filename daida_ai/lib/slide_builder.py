@@ -86,10 +86,17 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: P
 
     Raises:
         FileNotFoundError: 画像ファイルが存在しないか、読み取れない
+        ValueError: 画像パスがbase_dirの外を参照している（パストラバーサル防止）
     """
     path = Path(image_path)
     if not path.is_absolute() and base_dir is not None:
-        path = base_dir / path
+        path = (base_dir / path).resolve()
+        # パストラバーサル防止: 解決後のパスがbase_dir配下にあることを検証
+        base_resolved = base_dir.resolve()
+        if not str(path).startswith(str(base_resolved) + "/") and path != base_resolved:
+            raise ValueError(
+                f"Image path escapes base directory: {image_path}"
+            )
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 

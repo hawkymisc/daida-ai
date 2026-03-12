@@ -465,3 +465,12 @@ class TestImageInsertion:
         prs = build_presentation(spec, base_dir=None)
         pics = _find_pictures(prs.slides[0])
         assert len(pics) == 1
+
+    def test_パストラバーサルはValueError(self, tmp_path):
+        """../を使ってbase_dir外を参照するとValueError"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="悪意", image="../../etc/passwd")],
+        )
+        with pytest.raises(ValueError, match="escapes base directory"):
+            build_presentation(spec, base_dir=tmp_path)

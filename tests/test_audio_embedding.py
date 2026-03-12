@@ -220,16 +220,37 @@ class TestPowerPoint互換性:
         r_embed = blip.get(f"{{{self._ns['r']}}}embed")
         assert r_embed, "a:blipにr:embed属性が必要"
 
-    def test_hlinkClickのr_idが空でない(
+    def test_hlinkClickがppaction_mediaを参照する(
         self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
     ):
-        """a:hlinkClick r:idが空文字列でないこと（または要素自体が不要）"""
+        """音声シェイプのa:hlinkClickがRT.HYPERLINKでppaction://mediaを参照すること"""
         output = tmp_output_dir / "output.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, output)
 
         prs = Presentation(str(output))
-        slide_xml = prs.slides[0].element
-        hlink = slide_xml.find(".//a:hlinkClick", self._ns)
-        if hlink is not None:
-            r_id = hlink.get(f"{{{self._ns['r']}}}id")
-            assert r_id != "", "hlinkClick r:idは空文字列であってはならない"
+        slide = prs.slides[0]
+        # 音声シェイプ内のhlinkClickを取得
+        pics = slide.element.findall(".//p:pic", self._ns)
+        audio_pic = None
+        for pic in pics:
+            if pic.find(".//a:audioFile", self._ns) is not None:
+                audio_pic = pic
+                break
+        assert audio_pic is not None, "音声シェイプが必要"
+
+        hlink = audio_pic.find(".//a:hlinkClick", self._ns)
+        assert hlink is not None, "a:hlinkClick要素が必要"
+
+        r_id = hlink.get(f"{{{self._ns['r']}}}id")
+        assert r_id and r_id != "", "hlinkClick r:idは空であってはならない"
+
+        action = hlink.get("action")
+        assert action == "ppaction://media", (
+            f"actionはppaction://mediaであるべき、実際: {action}"
+        )
+
+        # リレーションシップがRT.HYPERLINKであること
+        rel = slide.part.rels[r_id]
+        assert rel.reltype == RT.HYPERLINK, (
+            f"hlinkClickはRT.HYPERLINKを参照すべき、実際: {rel.reltype}"
+        )

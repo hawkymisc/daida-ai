@@ -121,8 +121,14 @@ def _embed_audio_in_slide(prs, slide, audio_path: Path, slide_idx: int) -> None:
     )
     r_id_icon = slide.part.relate_to(icon_part, RT.IMAGE)
 
-    # 4. スライドXMLに音声シェイプを追加
-    _add_audio_shape(slide, r_id_audio, r_id_media, r_id_icon, slide_idx)
+    # 4. hlinkClick用のハイパーリンクリレーションシップを追加
+    #    ppaction://media は外部URIとして扱う
+    r_id_hlink = slide.part.rels.get_or_add_ext_rel(
+        RT.HYPERLINK, "ppaction://media"
+    )
+
+    # 5. スライドXMLに音声シェイプを追加
+    _add_audio_shape(slide, r_id_audio, r_id_media, r_id_icon, r_id_hlink, slide_idx)
 
 
 def _add_audio_shape(
@@ -130,12 +136,13 @@ def _add_audio_shape(
     r_id_audio: str,
     r_id_media: str,
     r_id_icon: str,
+    r_id_hlink: str,
     slide_idx: int,
 ) -> None:
     """スライドXMLにp:pic要素（音声コントロール）を追加する。
 
     PowerPoint互換のOOXML構造:
-    - p:cNvPr: hlinkClickなし（空r:idを避ける）
+    - p:cNvPr: a:hlinkClick (RT.HYPERLINK → ppaction://media)
     - p:nvPr: a:audioFile (RT.AUDIO) + p14:media拡張 (RT.MEDIA)
     - p:blipFill: a:blip (RT.IMAGE, アイコン画像)
     """
@@ -153,7 +160,9 @@ def _add_audio_shape(
         f'xmlns:p="{_nsmap["p"]}" '
         f'xmlns:p14="{_nsmap["p14"]}">'
         f'  <p:nvPicPr>'
-        f'    <p:cNvPr id="{shape_id}" name="Audio {slide_idx}"/>'
+        f'    <p:cNvPr id="{shape_id}" name="Audio {slide_idx}">'
+        f'      <a:hlinkClick r:id="{r_id_hlink}" action="ppaction://media"/>'
+        f'    </p:cNvPr>'
         f'    <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
         f'    <p:nvPr>'
         f'      <a:audioFile r:link="{r_id_audio}"/>'

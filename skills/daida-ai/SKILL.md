@@ -238,8 +238,8 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh enrich_outline.py output/slide_spec.json
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
-  --prompt "A futuristic system architecture diagram, clean flat design" \
-  --output output/images/slide3_photo.png \
+  --prompt "A professional conference stage with spotlight, modern tech event atmosphere" \
+  --output output/images/slide1_background.png \
   --aspect-ratio 16:9 \
   --size 1K \
   --model pro

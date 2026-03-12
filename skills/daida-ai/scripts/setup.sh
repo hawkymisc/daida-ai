@@ -17,7 +17,7 @@ fi
 # Activate and install
 echo "Installing dependencies..."
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-"$VENV_DIR/bin/pip" install --quiet -e "$PROJECT_ROOT[voicevox]"
+"$VENV_DIR/bin/pip" install --quiet -e "$PROJECT_ROOT[voicevox,svg]"
 
 echo "=== Setup complete ==="
 echo "Activate with: source $VENV_DIR/bin/activate"

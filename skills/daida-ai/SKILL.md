@@ -186,21 +186,33 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh enrich_outline.py output/slide_spec.json
 
 ## Step 1.7: 画像生成（オプション）
 
-スライドに図やイラストを含めたい場合、Nano Banana（Gemini画像生成API）で画像を生成する。
+スライドに図やイラストを含めたい場合、画像を生成する。
+方式は環境に応じて自動選択する。
 
-### 前提条件
+### 方式の選択
 
-- `GEMINI_API_KEY` 環境変数が設定されていること
+```bash
+# GEMINI_API_KEY の有無を確認する
+echo ${GEMINI_API_KEY:+"Gemini API available"}
+```
+
+| 条件 | 方式 | 特徴 |
+|---|---|---|
+| `GEMINI_API_KEY` あり | **方式A: Nano Banana** | 写真風・リアル画像・複雑なイラスト |
+| `GEMINI_API_KEY` なし | **方式B: SVG生成** | 図・ダイアグラム・アイコン・概念図（APIキー不要） |
 
 ### ユーザーに確認する
 - 画像が必要なスライドとプロンプト
-- アスペクト比: `16:9`（スライド全面）、`4:3`（コンテンツ領域）、`1:1` 等
-- 解像度: `1K`（デフォルト）、`2K`、`4K`
+- 方式A の場合: アスペクト比 (`16:9` / `4:3` / `1:1`)、解像度 (`1K` / `2K` / `4K`)
+- 方式B の場合: 図の種類（フロー図、アーキテクチャ図、比較図、アイコンなど）
 
-### スクリプト実行
+---
+
+### 方式A: Nano Banana（Gemini画像生成API）
+
+**前提条件**: `GEMINI_API_KEY` 環境変数が設定されていること
 
 ```bash
-# 1枚ずつ生成（プロンプトを調整しながら）
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
   --prompt "A futuristic system architecture diagram, clean flat design" \
   --output output/images/slide3_architecture.png \
@@ -209,7 +221,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
   --model pro
 ```
 
-### モデル選択
+#### モデル選択
 
 | Alias | Model ID | 用途 |
 |---|---|---|
@@ -217,13 +229,71 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh generate_image.py \
 | `flash` | `gemini-3.1-flash-image-preview` | 高速生成、大量生成 |
 | `legacy` | `gemini-2.5-flash-image` | 旧モデル |
 
-### ワークフロー
-
-1. Step 1.5 のスライド仕様JSONで `image` フィールドに出力パスを指定しておく
-2. 本ステップで画像を生成し、指定パスに保存する
-3. Step 2 でスライド生成時に自動的に画像が挿入される
-
 生成後、Read ツールで画像をユーザーに見せ、必要に応じてプロンプトを調整する。
+
+---
+
+### 方式B: SVG生成（APIキー不要）
+
+あなた（Claude）がSVGコードを直接生成し、PNGに変換してスライドに挿入する。
+写真風の画像は生成できないが、**ダイアグラム・フローチャート・概念図・アイコン**に適している。
+
+#### SVG生成ガイドライン
+
+1. **Write ツール**で SVG ファイルを作成する
+2. サイズは用途に合わせる:
+   - スライド全面: `viewBox="0 0 1920 1080"`（16:9）
+   - コンテンツ領域: `viewBox="0 0 1200 900"`（4:3）
+   - アイコン: `viewBox="0 0 400 400"`（1:1）
+3. テンプレートのカラースキームに合わせた配色にする:
+   - **tech**: ダーク背景 (`#1E293B`)、アクセント (`#38BDF8`, `#818CF8`)
+   - **casual**: 明るい背景 (`#FFF8F0`)、アクセント (`#FF6B35`, `#06D6A0`)
+   - **formal**: 白背景 (`#FFFFFF`)、アクセント (`#1B2D45`, `#C49B66`)
+4. フォントは `sans-serif` を指定する（環境依存を避けるため）
+
+#### SVG例: アーキテクチャ図
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <rect width="1920" height="1080" fill="#1E293B"/>
+  <!-- ボックス -->
+  <rect x="760" y="80" width="400" height="120" rx="16" fill="#38BDF8"/>
+  <text x="960" y="150" text-anchor="middle" fill="#1E293B"
+        font-size="32" font-family="sans-serif" font-weight="bold">Frontend</text>
+  <!-- 矢印 -->
+  <line x1="960" y1="200" x2="960" y2="300" stroke="#818CF8" stroke-width="4"
+        marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#818CF8"/>
+    </marker>
+  </defs>
+  <!-- 他のコンポーネントも同様に配置 -->
+</svg>
+```
+
+#### PNG変換
+
+SVG は python-pptx で直接挿入できないため、PNG に変換する:
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh svg_to_png.py \
+  output/images/architecture.svg \
+  output/images/architecture.png \
+  --scale 2
+```
+
+`--scale 2`（デフォルト）で2倍解像度のPNGを生成する。スライドでの表示品質が向上する。
+
+変換後、Read ツールでPNGをユーザーに見せ、SVGを調整→再変換する。
+
+---
+
+### 共通ワークフロー
+
+1. Step 1.5 のスライド仕様JSONで `image` フィールドに **PNG の出力パス** を指定しておく
+2. 本ステップで画像を生成（方式A: API生成 / 方式B: SVG作成→PNG変換）
+3. Step 2 でスライド生成時に自動的に画像が挿入される
 
 ---
 

@@ -52,6 +52,7 @@ class Slide:
     left: TwoColumnContent | None = None
     right: TwoColumnContent | None = None
     note: str | None = None
+    image: str | None = None
 
     def __post_init__(self):
         if self.layout not in VALID_LAYOUTS:
@@ -80,6 +81,9 @@ def _parse_two_column(data: dict | None) -> TwoColumnContent | None:
 def _parse_slide(data: dict) -> Slide:
     if "layout" not in data:
         raise ValueError("slide requires 'layout' field")
+    image = data.get("image")
+    if image is not None and not isinstance(image, str):
+        raise ValueError(f"image must be a string or null, got {type(image).__name__}")
     return Slide(
         layout=data["layout"],
         title=data.get("title", ""),
@@ -88,6 +92,7 @@ def _parse_slide(data: dict) -> Slide:
         left=_parse_two_column(data.get("left")),
         right=_parse_two_column(data.get("right")),
         note=data.get("note"),
+        image=image,
     )
 
 

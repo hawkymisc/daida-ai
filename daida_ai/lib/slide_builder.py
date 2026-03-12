@@ -93,7 +93,7 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: P
         path = (base_dir / path).resolve()
         # パストラバーサル防止: 解決後のパスがbase_dir配下にあることを検証
         base_resolved = base_dir.resolve()
-        if not str(path).startswith(str(base_resolved) + "/") and path != base_resolved:
+        if not path.is_relative_to(base_resolved):
             raise ValueError(
                 f"Image path escapes base directory: {image_path}"
             )

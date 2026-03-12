@@ -59,7 +59,7 @@ def main():
 
     try:
         prs = build_presentation(spec, template_path=template_path, base_dir=args.input.parent)
-    except (FileNotFoundError, PackageNotFoundError) as e:
+    except (FileNotFoundError, PackageNotFoundError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 

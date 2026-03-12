@@ -57,10 +57,12 @@ SAMPLE_SPEC = {
             "layout": "title_slide",
             "title": "AI時代の開発ワークフロー",
             "subtitle": "2026/03/10 @ Tech LT #99 - テスト太郎",
+            "note": "みなさんこんにちは。本日はAI時代の開発ワークフローについてお話しします。",
         },
         {
             "layout": "section_header",
             "title": "開発の進化",
+            "note": "まずは開発スタイルの進化について振り返ってみましょう。",
         },
         {
             "layout": "title_and_content",

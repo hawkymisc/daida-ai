@@ -474,3 +474,74 @@ class TestImageInsertion:
         )
         with pytest.raises(ValueError, match="escapes base directory"):
             build_presentation(spec, base_dir=tmp_path)
+
+
+class TestSVGAutoConvert:
+    """SVGファイルの自動PNG変換と挿入"""
+
+    def test_SVGファイルがスライドに挿入される(self, sample_svg):
+        """SVGパスを指定すると自動変換されて画像が挿入される"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="SVG図", image=str(sample_svg))],
+        )
+        prs = build_presentation(spec)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_SVG相対パスがbase_dirで解決される(self, tmp_path):
+        """相対SVGパスもbase_dirで正しく解決される"""
+        img_dir = tmp_path / "images"
+        img_dir.mkdir()
+        svg_path = img_dir / "diagram.svg"
+        svg_path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+            '<rect width="100" height="100" fill="red"/></svg>'
+        )
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="相対SVG", image="images/diagram.svg")],
+        )
+        prs = build_presentation(spec, base_dir=tmp_path)
+        pics = _find_pictures(prs.slides[0])
+        assert len(pics) == 1
+
+    def test_SVGのアスペクト比が維持される(self, tmp_path):
+        """横長SVG（800x200）のアスペクト比が維持される"""
+        svg = tmp_path / "wide.svg"
+        svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200">'
+            '<rect width="800" height="200" fill="blue"/></svg>'
+        )
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="ワイドSVG", image=str(svg))],
+        )
+        prs = build_presentation(spec)
+        pic = _find_pictures(prs.slides[0])[0]
+        actual_ratio = pic.width / pic.height
+        assert abs(actual_ratio - 4.0) < 0.1
+
+    def test_変換済みPNGは一時ファイルに保存される(self, sample_svg, tmp_output_dir):
+        """SVG挿入後もPPTXが正常に保存・再読み込みできる"""
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="保存テスト", image=str(sample_svg))],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "svg_test.pptx"
+        prs.save(str(path))
+        reopened = Presentation(str(path))
+        pics = _find_pictures(reopened.slides[0])
+        assert len(pics) == 1
+
+    def test_不正なSVGはFileNotFoundError(self, tmp_path):
+        """壊れたSVGファイルでもFileNotFoundErrorが返る"""
+        bad_svg = tmp_path / "broken.svg"
+        bad_svg.write_text("this is not SVG at all")
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_only", title="壊れたSVG", image=str(bad_svg))],
+        )
+        with pytest.raises(FileNotFoundError, match="SVG conversion failed|Invalid image"):
+            build_presentation(spec)

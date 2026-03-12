@@ -3,10 +3,17 @@
 python-pptxは音声の直接埋め込みAPIを持たないため、
 OPCパッケージレベルでメディアパーツを追加し、
 スライドXMLに音声シェイプ（p:pic + audioFile）を挿入する。
+
+PowerPoint互換性のため、以下の構造が必要:
+- RT.AUDIO リレーションシップ → a:audioFile r:link
+- RT.MEDIA リレーションシップ → p14:media r:embed
+- RT.IMAGE リレーションシップ → a:blip r:embed（アイコン画像）
 """
 
 from __future__ import annotations
 
+import struct
+import zlib
 from pathlib import Path
 from lxml import etree
 from pptx import Presentation
@@ -18,7 +25,31 @@ _nsmap = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+    "p14": "http://schemas.microsoft.com/office/powerpoint/2010/main",
 }
+
+# p14:media拡張のURI
+_P14_MEDIA_URI = "{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"
+
+
+def _make_1x1_png() -> bytes:
+    """1x1透明PNGバイナリを生成する（音声シェイプのアイコンプレースホルダ用）。"""
+
+    def _chunk(chunk_type: bytes, data: bytes) -> bytes:
+        c = chunk_type + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    signature = b"\x89PNG\r\n\x1a\n"
+    # IHDR: 1x1, 8-bit RGBA
+    ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+    # IDAT: 1 transparent pixel (filter byte 0 + RGBA 0,0,0,0)
+    raw_data = b"\x00\x00\x00\x00\x00"
+    idat_data = zlib.compress(raw_data)
+    return signature + _chunk(b"IHDR", ihdr_data) + _chunk(b"IDAT", idat_data) + _chunk(b"IEND", b"")
+
+
+# モジュールレベルでキャッシュ
+_ICON_PNG = _make_1x1_png()
 
 
 def embed_audio_to_pptx(
@@ -58,9 +89,10 @@ def embed_audio_to_pptx(
 def _embed_audio_in_slide(prs, slide, audio_path: Path, slide_idx: int) -> None:
     """単一スライドに音声ファイルを埋め込む。
 
-    1. OPCパッケージに音声パーツを追加
-    2. スライドパーツからリレーションシップ(RT.MEDIA)を追加
-    3. スライドXMLにp:pic要素（audioFile参照付き）を挿入
+    PowerPoint互換のため3つのリレーションシップを作成:
+    1. RT.AUDIO → a:audioFile r:link 用
+    2. RT.MEDIA → p14:media r:embed 用
+    3. RT.IMAGE → a:blip r:embed 用（アイコン画像）
     """
     audio_data = audio_path.read_bytes()
     part_name = f"/ppt/media/audio_slide{slide_idx:03d}.mp3"
@@ -73,18 +105,46 @@ def _embed_audio_in_slide(prs, slide, audio_path: Path, slide_idx: int) -> None:
         blob=audio_data,
     )
 
-    # 2. リレーションシップを追加（rIdを取得）
-    r_id = slide.part.relate_to(audio_part, RT.MEDIA)
+    # 2. リレーションシップを追加
+    # RT.AUDIO: a:audioFile r:link が参照する
+    r_id_audio = slide.part.relate_to(audio_part, RT.AUDIO)
+    # RT.MEDIA: p14:media r:embed が参照する
+    r_id_media = slide.part.relate_to(audio_part, RT.MEDIA)
 
-    # 3. スライドXMLに音声シェイプを追加
-    _add_audio_shape(slide, r_id, slide_idx)
+    # 3. アイコン画像パーツを作成
+    icon_part_name = f"/ppt/media/audio_icon{slide_idx:03d}.png"
+    icon_part = Part(
+        PackURI(icon_part_name),
+        "image/png",
+        prs.part.package,
+        blob=_ICON_PNG,
+    )
+    r_id_icon = slide.part.relate_to(icon_part, RT.IMAGE)
+
+    # 4. hlinkClick用のハイパーリンクリレーションシップを追加
+    #    ppaction://media は外部URIとして扱う
+    r_id_hlink = slide.part.rels.get_or_add_ext_rel(
+        RT.HYPERLINK, "ppaction://media"
+    )
+
+    # 5. スライドXMLに音声シェイプを追加
+    _add_audio_shape(slide, r_id_audio, r_id_media, r_id_icon, r_id_hlink, slide_idx)
 
 
-def _add_audio_shape(slide, r_id: str, slide_idx: int) -> None:
+def _add_audio_shape(
+    slide,
+    r_id_audio: str,
+    r_id_media: str,
+    r_id_icon: str,
+    r_id_hlink: str,
+    slide_idx: int,
+) -> None:
     """スライドXMLにp:pic要素（音声コントロール）を追加する。
 
-    音声アイコンはスライドの右下に小さく配置し、
-    自動再生設定を含める。
+    PowerPoint互換のOOXML構造:
+    - p:cNvPr: a:hlinkClick (RT.HYPERLINK → ppaction://media)
+    - p:nvPr: a:audioFile (RT.AUDIO) + p14:media拡張 (RT.MEDIA)
+    - p:blipFill: a:blip (RT.IMAGE, アイコン画像)
     """
     # スライド上の位置（右下、小さいアイコン）
     x = Emu(8229600)   # ~3.2 inches from left
@@ -94,22 +154,27 @@ def _add_audio_shape(slide, r_id: str, slide_idx: int) -> None:
 
     shape_id = 10000 + slide_idx
 
-    # p:pic 要素を構築（音声シェイプとして）
     pic_xml = (
         f'<p:pic xmlns:a="{_nsmap["a"]}" '
         f'xmlns:r="{_nsmap["r"]}" '
-        f'xmlns:p="{_nsmap["p"]}">'
+        f'xmlns:p="{_nsmap["p"]}" '
+        f'xmlns:p14="{_nsmap["p14"]}">'
         f'  <p:nvPicPr>'
         f'    <p:cNvPr id="{shape_id}" name="Audio {slide_idx}">'
-        f'      <a:hlinkClick r:id="" action="ppaction://media"/>'
+        f'      <a:hlinkClick r:id="{r_id_hlink}" action="ppaction://media"/>'
         f'    </p:cNvPr>'
         f'    <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
         f'    <p:nvPr>'
-        f'      <a:audioFile r:link="{r_id}"/>'
+        f'      <a:audioFile r:link="{r_id_audio}"/>'
+        f'      <p:extLst>'
+        f'        <p:ext uri="{_P14_MEDIA_URI}">'
+        f'          <p14:media r:embed="{r_id_media}"/>'
+        f'        </p:ext>'
+        f'      </p:extLst>'
         f'    </p:nvPr>'
         f'  </p:nvPicPr>'
         f'  <p:blipFill>'
-        f'    <a:blip/>'
+        f'    <a:blip r:embed="{r_id_icon}"/>'
         f'    <a:stretch><a:fillRect/></a:stretch>'
         f'  </p:blipFill>'
         f'  <p:spPr>'
@@ -123,7 +188,6 @@ def _add_audio_shape(slide, r_id: str, slide_idx: int) -> None:
     )
 
     pic_element = etree.fromstring(pic_xml)
-    # slide.element はスライドのXMLルート要素（CT_Slide）
     slide_element = slide.element
     sp_tree = slide_element.find(
         ".//{http://schemas.openxmlformats.org/presentationml/2006/main}spTree"

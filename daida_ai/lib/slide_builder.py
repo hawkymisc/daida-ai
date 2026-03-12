@@ -178,7 +178,8 @@ def _add_title_and_content(prs, spec: Slide, base_dir: Path | None = None) -> No
                 p.text = item
 
     if spec.image:
-        _insert_image(slide, spec.image, base_dir=base_dir)
+        pic = _insert_image(slide, spec.image, base_dir=base_dir)
+        _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 
@@ -209,7 +210,8 @@ def _add_two_content(prs, spec: Slide, base_dir: Path | None = None) -> None:
             p.text = item
 
     if spec.image:
-        _insert_image(slide, spec.image, base_dir=base_dir)
+        pic = _insert_image(slide, spec.image, base_dir=base_dir)
+        _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 
@@ -219,7 +221,8 @@ def _add_title_only(prs, spec: Slide, base_dir: Path | None = None) -> None:
     if slide.shapes.title:
         slide.shapes.title.text = spec.title
     if spec.image:
-        _insert_image(slide, spec.image, base_dir=base_dir)
+        pic = _insert_image(slide, spec.image, base_dir=base_dir)
+        _send_to_back(slide, pic)
     _set_notes(slide, spec.note)
 
 

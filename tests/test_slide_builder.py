@@ -308,6 +308,44 @@ class TestImageInsertion:
         pics = _find_pictures(prs.slides[0])
         assert len(pics) == 1
 
+    def test_title_onlyの画像はテキストの背面にある(self, sample_image):
+        spec = self._make_spec("title_only", sample_image, title="図")
+        prs = build_presentation(spec)
+        slide = prs.slides[0]
+        shapes = list(slide.shapes)
+        pic_indices = [i for i, s in enumerate(shapes) if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        ph_indices = [i for i, s in enumerate(shapes) if s.shape_type != MSO_SHAPE_TYPE.PICTURE and s._element.ph is not None]
+        assert all(pi < phi for pi in pic_indices for phi in ph_indices), \
+            f"pic at {pic_indices} should be behind placeholders at {ph_indices}"
+
+    def test_title_and_contentの画像はテキストの背面にある(self, sample_image):
+        spec = self._make_spec("title_and_content", sample_image, title="図付き", body=["テキスト"])
+        prs = build_presentation(spec)
+        slide = prs.slides[0]
+        shapes = list(slide.shapes)
+        pic_indices = [i for i, s in enumerate(shapes) if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        ph_indices = [i for i, s in enumerate(shapes) if s.shape_type != MSO_SHAPE_TYPE.PICTURE and s._element.ph is not None]
+        assert all(pi < phi for pi in pic_indices for phi in ph_indices), \
+            f"pic at {pic_indices} should be behind placeholders at {ph_indices}"
+
+    def test_two_contentの画像はテキストの背面にある(self, sample_image):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(
+                layout="two_content", title="比較",
+                left=TwoColumnContent(heading="左", body=["A"]),
+                right=TwoColumnContent(heading="右", body=["B"]),
+                image=str(sample_image),
+            )],
+        )
+        prs = build_presentation(spec)
+        slide = prs.slides[0]
+        shapes = list(slide.shapes)
+        pic_indices = [i for i, s in enumerate(shapes) if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        ph_indices = [i for i, s in enumerate(shapes) if s.shape_type != MSO_SHAPE_TYPE.PICTURE and s._element.ph is not None]
+        assert all(pi < phi for pi in pic_indices for phi in ph_indices), \
+            f"pic at {pic_indices} should be behind placeholders at {ph_indices}"
+
     def test_blankに画像が挿入される(self, sample_image):
         spec = self._make_spec("blank", sample_image)
         prs = build_presentation(spec)

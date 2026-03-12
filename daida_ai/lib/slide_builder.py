@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from PIL import Image as PILImage
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
+
+try:
+    import cairosvg as _cairosvg
+except ImportError:
+    _cairosvg = None
 
 from daida_ai.lib.slide_spec import SlideSpec, Slide, TwoColumnContent
 
@@ -78,6 +84,30 @@ def _calc_image_area(slide_w: int, slide_h: int, *, is_blank: bool = False):
     return max_w, max_h, top
 
 
+def _convert_svg(svg_path: Path, original_path: str) -> Path:
+    """SVGをPNGに変換し、一時ファイルのPathを返す。
+
+    Raises:
+        FileNotFoundError: cairosvg未インストール or 変換失敗時
+    """
+    if _cairosvg is None:
+        raise FileNotFoundError(
+            f"SVG file requires cairosvg: pip install cairosvg ({original_path})"
+        )
+    try:
+        png_path = Path(tempfile.mktemp(suffix=".png"))
+        _cairosvg.svg2png(
+            url=str(svg_path.resolve()),
+            write_to=str(png_path),
+            scale=2,
+        )
+        return png_path
+    except Exception as e:
+        raise FileNotFoundError(
+            f"SVG conversion failed: {original_path} ({e})"
+        ) from e
+
+
 def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: Path | None = None) -> None:
     """スライドに画像を挿入する。アスペクト比を維持してコンテンツ領域に収める。
 
@@ -99,6 +129,10 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: P
             )
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
+
+    # SVG自動変換: .svg ファイルを検出し、PNGに変換してから挿入
+    if path.suffix.lower() == ".svg":
+        path = _convert_svg(path, image_path)
 
     try:
         with PILImage.open(str(path)) as img:

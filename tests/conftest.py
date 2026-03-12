@@ -88,3 +88,16 @@ def tall_image(tmp_output_dir) -> Path:
     img = Image.new("RGB", (200, 600), color=(50, 200, 100))
     img.save(str(path))
     return path
+
+
+@pytest.fixture
+def sample_svg(tmp_output_dir) -> Path:
+    """テスト用のSVGファイル（320x240）"""
+    path = tmp_output_dir / "test_diagram.svg"
+    path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240">'
+        '<rect width="320" height="240" fill="#1E293B"/>'
+        '<circle cx="160" cy="120" r="60" fill="#38BDF8"/>'
+        "</svg>"
+    )
+    return path

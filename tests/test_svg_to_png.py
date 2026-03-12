@@ -2,8 +2,6 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
 import pytest
 
 sys.path.insert(
@@ -104,14 +102,18 @@ class TestErrorHandling:
 
     def test_cairosvg未インストール時のエラーメッセージ(self, tmp_path):
         """cairosvgがない環境ではわかりやすいエラーを出す"""
+        import svg_to_png as mod
+
         svg_path = tmp_path / "input.svg"
         svg_path.write_text(_MINIMAL_SVG)
 
-        with patch.dict(sys.modules, {"cairosvg": None}):
-            # import済みキャッシュをバイパスするためにモジュールレベルでテスト
-            # 実際にはimportエラーはモジュールロード時に起きる
-            # ここではconvert関数内のフォールバックをテスト
-            pass  # cairosvgが既にimport済みのため、このテストはスキップ
+        original = mod.cairosvg
+        try:
+            mod.cairosvg = None
+            with pytest.raises(SVGConversionError, match="cairosvg is not installed"):
+                convert_svg_to_png(str(svg_path), str(tmp_path / "out.png"))
+        finally:
+            mod.cairosvg = original
 
 
 class TestSVGContent:

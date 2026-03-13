@@ -381,6 +381,15 @@ def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
 
     各 p:par の終了時刻を _calc_par_end_ms で再帰計算し最大値を返す。
     音声ノード (dur属性なし) は実質カウントされない。
+
+    **スコープ制限**: この実装は p:stCondLst/p:cond/@delay による明示的な
+    絶対遅延を処理する。PowerPoint の "After Previous" アニメーション
+    (p:prevCondLst/p:nextCondLst または evt="onEnd" 等のイベント条件) による
+    連鎖は解析しない（依存グラフ解決が必要なため）。
+
+    daida-ai が生成するスライドには "After Previous" アニメーションは存在しない
+    ため、このツールの実用上の問題はない。外部 PPTX で複雑なアニメーション
+    チェーンが含まれる場合は、計算値が実際の終了時刻より短くなる可能性がある。
     """
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:

@@ -1629,7 +1629,13 @@ class TestLibreOffice互換mainSeqDur:
         assert main_seq is not None
         adv_tm = int(trans.get("advTm"))
 
-        # dur=1000 * repeatCount=3 = 3000ms → advTm >= 3000ms
+        # dur=1000 * repeatCount=3 = 3000ms → advTm >= 3000ms, mainSeq.dur >= 3000ms
+        main_seq = slide_out.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+        assert main_seq is not None
+        dur = int(main_seq.get("dur"))
+        assert dur >= 3000, (
+            f"mainSeq.dur({dur}ms) は repeatCount=3 * dur=1000ms = 3000ms 以上であるべき"
+        )
         assert adv_tm >= 3000, (
             f"advTm({adv_tm}ms) は repeatCount=3 * dur=1000ms = 3000ms 以上であるべき"
         )
@@ -1719,7 +1725,310 @@ class TestLibreOffice互換mainSeqDur:
 
         adv_tm = int(trans.get("advTm"))
 
-        # onClick アニメーション(10000ms)は無視されるため、advTm << 10000ms
+        # onClick アニメーション(10000ms)は無視されるため、advTm は音声ベースで << 10000ms
+        # 音声は dummy_mp3 (数ms) + silent_duration_ms のデフォルト(5000ms) + buffer(1000ms)
+        # → advTm < 10000ms であること
         assert adv_tm < 10000, (
             f"advTm({adv_tm}ms) は onClick アニメーション(10000ms)の影響を受けてはいけない"
         )
+        # また advTm は正の値であること（スライドが進むこと）
+        assert adv_tm > 0, f"advTm({adv_tm}ms) は正の値であるべき"
+
+    def test_repeatDurアニメーションで総時間がtimelineに反映される(
+        self, tmp_output_dir: Path
+    ):
+        """repeatDur="2000" (総時間2000ms上限) のアニメーションで advTm >= 2000ms になること。
+
+        ECMA-376では repeatDur は繰り返し総時間の上限を指定する。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "repeatdur_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_repeatdur"
+        audio_dir.mkdir()
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "repeatdur_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # dur=500ms を repeatDur=2000ms で繰り返す → 実効2000ms
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="500" repeatDur="2000" fill="hold">
+                          <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="500" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "repeatdur_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "repeatdur_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        adv_tm = int(trans.get("advTm"))
+
+        # repeatDur=2000ms → advTm >= 2000ms
+        assert adv_tm >= 2000, (
+            f"advTm({adv_tm}ms) は repeatDur=2000ms 以上であるべき"
+        )
+
+    def test_repeatCount_indefiniteは通常のdurとして扱われる(
+        self, tmp_output_dir: Path
+    ):
+        """repeatCount="indefinite" は繰り返し無限大 → タイムライン計算では dur のみを使う。
+
+        advTm は repeatCount=indefinite のアニメーション長 (dur=1000ms) + buffer が下限になる。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "repeat_indef_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_repeat_indef"
+        audio_dir.mkdir()
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "repeat_indef_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # repeatCount="indefinite" + dur="1000" → advTm は有限値になること
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="1000" repeatCount="indefinite" fill="hold">
+                          <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="1000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "repeat_indef_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "repeat_indef_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        adv_tm = int(trans.get("advTm"))
+
+        # repeatCount="indefinite" はスキップ → dur=1000ms のみ考慮 → advTm は有限の正の値
+        assert adv_tm > 0, f"advTm({adv_tm}ms) は正の値であるべき"
+        # advTm は "indefinite" のせいで無限大にはならない（int 変換できる）
+        assert adv_tm < 10_000_000, f"advTm({adv_tm}ms) が過大すぎる"
+
+    def test_onEnd循環参照でRecursionErrorが発生しない(
+        self, tmp_output_dir: Path
+    ):
+        """anim1 onEnd→anim2, anim2 onEnd→anim1 の循環参照でクラッシュしないこと。
+
+        configure_slideshow が完了し、advTm が有限の正の値になることを確認する。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "cycle_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_cycle"
+        audio_dir.mkdir()
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "cycle_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # par1 (id=3, cTn id=4) onEnd→ par2 (cTn id=6)
+        # par2 (id=6) onEnd→ par1 (cTn id=4) — 循環
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="1000" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="1000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+                <p:par>
+                  <p:cTn id="6" fill="hold">
+                    <p:stCondLst>
+                      <p:cond delay="0" evt="onEnd"><p:tn val="4"/></p:cond>
+                    </p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="7" dur="2000" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="8" dur="2000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+                <p:par>
+                  <p:cTn id="9" fill="hold">
+                    <p:stCondLst>
+                      <p:cond delay="0" evt="onEnd"><p:tn val="6"/></p:cond>
+                    </p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="10" dur="500" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="11" dur="500" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="3"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "cycle_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "cycle_out.pptx"
+        # RecursionError を発生させずに完了すること
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        adv_tm = int(trans.get("advTm"))
+        assert adv_tm > 0, f"循環参照があっても advTm は正の値であるべき: {adv_tm}"

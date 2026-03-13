@@ -421,43 +421,53 @@ def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
 
     # Step 3: evt="onEnd" 依存を解決して開始時刻を計算
     par_starts: dict[int, int] = {}
+    _computing: set[int] = set()  # 循環参照検出用
 
     def get_start(idx: int) -> int:
         if idx in par_starts:
             return par_starts[idx]
-
-        par = par_list[idx]
-        outer_ctn = par.find(f"{{{_P_NS}}}cTn")
-        if outer_ctn is None:
+        if idx in _computing:
+            # 循環参照検出: 独立開始(0ms)として扱い RecursionError を防ぐ
             par_starts[idx] = 0
             return 0
 
-        own_delay = _get_ctn_start_delay(outer_ctn)
-        st_cond = outer_ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
+        _computing.add(idx)
+        try:
+            par = par_list[idx]
+            outer_ctn = par.find(f"{{{_P_NS}}}cTn")
+            if outer_ctn is None:
+                par_starts[idx] = 0
+                return 0
 
-        if st_cond is not None:
-            evt = st_cond.get("evt")
-            if evt == "onClick":
-                # クリックトリガーは無人再生では発動しないためスキップ (-1 = sentinel)
-                par_starts[idx] = -1
-                return -1
-            tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
-            if evt in ("onEnd", "onBegin") and tn_ref is not None:
-                ref_id = tn_ref.get("val")
-                ref_par_idx = ctn_id_to_par_idx.get(ref_id)
-                if ref_par_idx is not None and ref_par_idx != idx:
-                    ref_start = get_start(ref_par_idx)
-                    if evt == "onEnd":
-                        # After Previous: 参照アニメーション終了後に開始
-                        base = ref_start + par_internal_durs[ref_par_idx]
-                    else:
-                        # With Previous (onBegin): 参照アニメーション開始と同時
-                        base = ref_start
-                    par_starts[idx] = base + own_delay
-                    return par_starts[idx]
+            own_delay = _get_ctn_start_delay(outer_ctn)
+            st_cond = outer_ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
 
-        par_starts[idx] = own_delay
-        return own_delay
+            if st_cond is not None:
+                evt = st_cond.get("evt")
+                if evt == "onClick":
+                    # クリックトリガーは無人再生では発動しないためスキップ (-1 = sentinel)
+                    par_starts[idx] = -1
+                    return -1
+                tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
+                if evt in ("onEnd", "onBegin") and tn_ref is not None:
+                    ref_id = tn_ref.get("val")
+                    ref_par_idx = ctn_id_to_par_idx.get(ref_id)
+                    if ref_par_idx is not None and ref_par_idx != idx:
+                        ref_start = get_start(ref_par_idx)
+                        if ref_start >= 0:
+                            if evt == "onEnd":
+                                # After Previous: 参照アニメーション終了後に開始
+                                base = ref_start + par_internal_durs[ref_par_idx]
+                            else:
+                                # With Previous (onBegin): 参照アニメーション開始と同時
+                                base = ref_start
+                            par_starts[idx] = base + own_delay
+                            return par_starts[idx]
+
+            par_starts[idx] = own_delay
+            return own_delay
+        finally:
+            _computing.discard(idx)
 
     max_end = 0
     for i in range(len(par_list)):

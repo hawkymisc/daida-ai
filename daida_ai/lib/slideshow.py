@@ -70,11 +70,16 @@ def configure_slideshow(
         audio_duration = _get_audio_duration_ms(slide)
 
         if has_audio_shapes:
-            if audio_duration > 0:
-                advance_ms = audio_duration + audio_buffer_ms
-            else:
-                # 外部リンク/非MP3など計測不能 → フォールバック
-                advance_ms = unmeasurable_duration_ms + audio_buffer_ms
+            raw_dur = audio_duration if audio_duration > 0 else unmeasurable_duration_ms
+            main_seq_dur_ms = max(raw_dur, 1)
+
+            # 既存アニメーション終了時刻を考慮して advance_ms を調整する。
+            # advTm は mainSeq.dur (= max(音声長, 既存アニメーション長)) + buffer 以上にする。
+            # これにより PowerPoint でも LibreOffice でも既存アニメーションが
+            # 完了する前にスライドが進むことを防ぐ。
+            existing_end = _get_existing_anim_end_ms(slide)
+            effective_dur = max(main_seq_dur_ms, existing_end)
+            advance_ms = effective_dur + audio_buffer_ms
         else:
             note_duration = _estimate_note_duration_ms(
                 slide, min_ms=silent_duration_ms
@@ -83,12 +88,20 @@ def configure_slideshow(
                 advance_ms = note_duration
             else:
                 advance_ms = silent_duration_ms
+            # 音声なしスライドでも既存アニメーション長を考慮する
+            existing_end = _get_existing_anim_end_ms(slide)
+            if existing_end > 0:
+                advance_ms = max(advance_ms, existing_end + audio_buffer_ms)
 
         # ECMA-376 CT_Slide: transition? は timing? より前に来る必要がある
         # transitionを先に設定してからtimingを追加する
         _set_auto_advance(slide, advance_ms)
         if has_audio_shapes:
-            _add_auto_play_animation(slide)
+            # LibreOffice は mainSeq dur="indefinite" のままだと
+            # notifySlideAnimationsEnded() が呼ばれず advTm が発火しない。
+            # 音声長を dur に設定することで音声終了時にアニメーションが終わり、
+            # LibreOffice のページ自動送りが正しく動作する。
+            _add_auto_play_animation(slide, main_seq_dur_ms=main_seq_dur_ms)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
@@ -209,11 +222,17 @@ def _set_auto_advance(slide, advance_ms: int) -> None:
     trans.set("advTm", str(advance_ms))
 
 
-def _add_auto_play_animation(slide) -> None:
+def _add_auto_play_animation(slide, *, main_seq_dur_ms: int = 0) -> None:
     """スライドの音声シェイプに自動再生アニメーションを設定する。
 
     既存のアニメーション（テキスト・図形等）を保持しつつ、
     音声auto-playノードをmainSeqにマージする。
+
+    Args:
+        slide: python-pptxのスライドオブジェクト
+        main_seq_dur_ms: mainSeqのdur属性をミリ秒で指定（0の場合は"indefinite"）。
+            LibreOffice互換性のため音声長を渡すと、アニメーション終了が
+            notifySlideAnimationsEnded() を確実に発火させる。
 
     PowerPointのアニメーション構造:
     p:timing > p:tnLst > p:par (tmRoot) > p:childTnLst > p:seq (mainSeq) >
@@ -229,20 +248,31 @@ def _add_auto_play_animation(slide) -> None:
 
     if existing_timing is not None:
         # 既存のtiming構造にaudioノードをマージ
-        _merge_audio_into_timing(existing_timing, audio_shape_ids)
+        _merge_audio_into_timing(existing_timing, audio_shape_ids,
+                                  main_seq_dur_ms=main_seq_dur_ms)
     else:
         # timing要素がない場合は新規作成
-        timing_elem = _build_timing_xml(audio_shape_ids)
+        timing_elem = _build_timing_xml(audio_shape_ids,
+                                         main_seq_dur_ms=main_seq_dur_ms)
         _insert_slide_child(slide_elem, timing_elem)
 
 
 def _merge_audio_into_timing(
-    timing_elem: etree._Element, audio_shape_ids: list[int]
+    timing_elem: etree._Element,
+    audio_shape_ids: list[int],
+    *,
+    main_seq_dur_ms: int = 0,
 ) -> None:
     """既存のp:timing構造に音声auto-playノードを追加する。
 
     mainSeqのchildTnLstに音声用p:parを追加する。
     既存のアニメーションはそのまま保持される。
+
+    Args:
+        timing_elem: 既存の p:timing 要素
+        audio_shape_ids: 音声シェイプのIDリスト
+        main_seq_dur_ms: 0の場合は "indefinite" のまま変更しない。
+            正の値の場合は mainSeq の dur をその値（ms）に更新する。
     """
     # mainSeq (nodeType="mainSeq") を探す
     main_seq_ctn = timing_elem.find(
@@ -250,6 +280,15 @@ def _merge_audio_into_timing(
     )
     if main_seq_ctn is None:
         return
+
+    # LibreOffice互換: mainSeq の dur を更新する。
+    # 比較対象は「以前のmainSeq.dur値（ステール可能性あり）」ではなく、
+    # 「childTnLst内の明示的なdur属性を持つ非音声アニメーション」にする。
+    # 音声ノードはdur属性を持たないため自然にフィルタされる。
+    # これにより: (1)再実行時に短縮された音声長が反映される (2)既存非音声アニメーションが保護される
+    if main_seq_dur_ms > 0:
+        max_child = _get_max_child_animation_dur_ms(main_seq_ctn)
+        main_seq_ctn.set("dur", str(max(main_seq_dur_ms, max_child)))
 
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:
@@ -276,6 +315,179 @@ def _merge_audio_into_timing(
         audio_par = _build_audio_par_xml(shape_id, max_id + 1)
         child_tn_lst.append(audio_par)
         max_id += 3  # 各audioノードはcTn idを3つ使う
+
+
+def _get_ctn_start_delay(ctn: etree._Element) -> int:
+    """cTnの開始遅延(ms)を p:stCondLst/p:cond/@delay から取得する。"""
+    st_cond = ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
+    if st_cond is None:
+        return 0
+    delay_val = st_cond.get("delay", "0")
+    if delay_val == "indefinite":
+        return 0
+    try:
+        return int(delay_val)
+    except ValueError:
+        return 0
+
+
+def _calc_par_end_ms(par_elem: etree._Element, parent_delay: int) -> int:
+    """p:par の終了時刻(ms)を再帰的に計算する。
+
+    ネストした p:cTn の開始遅延を累積して正確な終了時刻を求める。
+    音声ノード (dur属性なし) は実質カウントされない。
+    """
+    ctn = par_elem.find(f"{{{_P_NS}}}cTn")
+    if ctn is None:
+        return parent_delay
+
+    own_delay = _get_ctn_start_delay(ctn)
+    total_delay = parent_delay + own_delay
+
+    # この cTn 自身の dur（p:seq や p:par コンテナは通常 dur="indefinite"）
+    dur_val = ctn.get("dur")
+    own_end = total_delay
+    if dur_val and dur_val != "indefinite":
+        try:
+            raw_dur = int(dur_val)
+            repeat_dur_val = ctn.get("repeatDur")
+            repeat_count_val = ctn.get("repeatCount")
+            if repeat_dur_val and repeat_dur_val != "indefinite":
+                effective_dur = int(repeat_dur_val)
+            elif repeat_count_val and repeat_count_val != "indefinite":
+                effective_dur = int(raw_dur * float(repeat_count_val))
+            else:
+                effective_dur = raw_dur
+            own_end = total_delay + effective_dur
+        except ValueError:
+            pass
+
+    # 子を再帰処理
+    child_tn_lst = ctn.find(f"{{{_P_NS}}}childTnLst")
+    if child_tn_lst is None:
+        return own_end
+
+    max_child_end = total_delay
+    for child in child_tn_lst:
+        if child.tag == f"{{{_P_NS}}}par":
+            # p:par はネストしたアニメーションコンテナ
+            child_end = _calc_par_end_ms(child, total_delay)
+            max_child_end = max(max_child_end, child_end)
+        else:
+            # p:anim, p:set 等の振る舞いノード: p:cBhvr > p:cTn[@dur] を探す
+            for sub_ctn in child.iter(f"{{{_P_NS}}}cTn"):
+                sub_dur = sub_ctn.get("dur")
+                if sub_dur and sub_dur != "indefinite":
+                    try:
+                        max_child_end = max(
+                            max_child_end,
+                            total_delay + _get_ctn_start_delay(sub_ctn) + int(sub_dur),
+                        )
+                    except ValueError:
+                        pass
+
+    return max(own_end, max_child_end)
+
+
+def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
+    """mainSeq の childTnLst 内の既存アニメーション終了時刻の最大値(ms)を返す。
+
+    各 p:par の終了時刻を再帰計算し、evt="onEnd" による連鎖も解決する。
+    音声ノード (dur属性なし) は実質カウントされない。
+    """
+    child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
+    if child_tn_lst is None:
+        return 0
+
+    par_list = child_tn_lst.findall(f"{{{_P_NS}}}par")
+    if not par_list:
+        return 0
+
+    # Step 1: cTn id → par index マップを構築
+    ctn_id_to_par_idx: dict[str, int] = {}
+    for i, par in enumerate(par_list):
+        for ctn in par.iter(f"{{{_P_NS}}}cTn"):
+            ctn_id = ctn.get("id")
+            if ctn_id:
+                ctn_id_to_par_idx[ctn_id] = i
+
+    # Step 2: 各 par の内部所要時間を計算（outer stCondLst の遅延を除く）
+    par_internal_durs: list[int] = []
+    for par in par_list:
+        outer_ctn = par.find(f"{{{_P_NS}}}cTn")
+        own_delay = _get_ctn_start_delay(outer_ctn) if outer_ctn is not None else 0
+        total_end = _calc_par_end_ms(par, 0)
+        par_internal_durs.append(max(0, total_end - own_delay))
+
+    # Step 3: evt="onEnd" 依存を解決して開始時刻を計算
+    par_starts: dict[int, int] = {}
+    _computing: set[int] = set()  # 循環参照検出用
+
+    def get_start(idx: int) -> int:
+        if idx in par_starts:
+            return par_starts[idx]
+        if idx in _computing:
+            # 循環参照検出: 独立開始(0ms)として扱い RecursionError を防ぐ
+            par_starts[idx] = 0
+            return 0
+
+        _computing.add(idx)
+        try:
+            par = par_list[idx]
+            outer_ctn = par.find(f"{{{_P_NS}}}cTn")
+            if outer_ctn is None:
+                par_starts[idx] = 0
+                return 0
+
+            own_delay = _get_ctn_start_delay(outer_ctn)
+            st_cond = outer_ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
+
+            if st_cond is not None:
+                evt = st_cond.get("evt")
+                if evt == "onClick":
+                    # クリックトリガーは無人再生では発動しないためスキップ (-1 = sentinel)
+                    par_starts[idx] = -1
+                    return -1
+                tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
+                if evt in ("onEnd", "onBegin") and tn_ref is not None:
+                    ref_id = tn_ref.get("val")
+                    ref_par_idx = ctn_id_to_par_idx.get(ref_id)
+                    if ref_par_idx is not None and ref_par_idx != idx:
+                        ref_start = get_start(ref_par_idx)
+                        if ref_start >= 0:
+                            if evt == "onEnd":
+                                # After Previous: 参照アニメーション終了後に開始
+                                base = ref_start + par_internal_durs[ref_par_idx]
+                            else:
+                                # With Previous (onBegin): 参照アニメーション開始と同時
+                                base = ref_start
+                            par_starts[idx] = base + own_delay
+                            return par_starts[idx]
+
+            par_starts[idx] = own_delay
+            return own_delay
+        finally:
+            _computing.discard(idx)
+
+    max_end = 0
+    for i in range(len(par_list)):
+        start = get_start(i)
+        if start < 0:
+            continue  # onClick など無人再生でスキップされるアニメーション
+        end = start + par_internal_durs[i]
+        max_end = max(max_end, end)
+    return max_end
+
+
+def _get_existing_anim_end_ms(slide) -> int:
+    """スライドの既存アニメーション終了時刻(ms)を返す。timing がない場合は 0。"""
+    timing_elem = slide.element.find(f"{{{_P_NS}}}timing")
+    if timing_elem is None:
+        return 0
+    main_seq_ctn = timing_elem.find(f".//{{{_P_NS}}}cTn[@nodeType='mainSeq']")
+    if main_seq_ctn is None:
+        return 0
+    return _get_max_child_animation_dur_ms(main_seq_ctn)
 
 
 def _get_max_ctn_id(timing_elem: etree._Element) -> int:
@@ -325,8 +537,19 @@ def _build_audio_par_xml(
     return etree.fromstring(xml)
 
 
-def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
-    """音声auto-play用の完全なp:timing要素を構築する。"""
+def _build_timing_xml(
+    audio_shape_ids: list[int],
+    *,
+    main_seq_dur_ms: int = 0,
+) -> etree._Element:
+    """音声auto-play用の完全なp:timing要素を構築する。
+
+    Args:
+        audio_shape_ids: 音声シェイプのIDリスト
+        main_seq_dur_ms: mainSeq の dur 属性値（ミリ秒）。
+            0 の場合は "indefinite"。正の値の場合はその値を使用する。
+            LibreOffice互換性のため音声長を渡すと自動送りが正しく動作する。
+    """
     audio_pars = ""
     ctn_id = 3
     for shape_id in audio_shape_ids:
@@ -363,13 +586,15 @@ def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
                 </p:par>"""
         ctn_id += 3
 
+    main_seq_dur = str(main_seq_dur_ms) if main_seq_dur_ms > 0 else "indefinite"
+
     timing_xml = f"""<p:timing xmlns:p="{_P_NS}">
   <p:tnLst>
     <p:par>
       <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
         <p:childTnLst>
           <p:seq concurrent="1" nextAc="seek">
-            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+            <p:cTn id="2" dur="{main_seq_dur}" nodeType="mainSeq">
               <p:childTnLst>{audio_pars}
               </p:childTnLst>
             </p:cTn>

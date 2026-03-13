@@ -294,17 +294,17 @@ def _merge_audio_into_timing(
     if child_tn_lst is None:
         child_tn_lst = etree.SubElement(main_seq_ctn, f"{{{_P_NS}}}childTnLst")
 
-    # 既存のaudioノードのspidを取得して重複を避ける
+    # 既存のメディアコマンドノードのspidを取得して重複を避ける
     existing_spids: set[int] = set()
     for spgt in timing_elem.iter(f"{{{_P_NS}}}spTgt"):
-        parent_audio = spgt.getparent()
-        while parent_audio is not None:
-            if parent_audio.tag == f"{{{_P_NS}}}audio":
+        parent = spgt.getparent()
+        while parent is not None:
+            if parent.tag in (f"{{{_P_NS}}}cmd", f"{{{_P_NS}}}audio"):
                 spid = spgt.get("spid")
                 if spid is not None:
                     existing_spids.add(int(spid))
                 break
-            parent_audio = parent_audio.getparent()
+            parent = parent.getparent()
 
     # 次のcTn idを算出
     max_id = _get_max_ctn_id(timing_elem)
@@ -503,7 +503,12 @@ def _get_max_ctn_id(timing_elem: etree._Element) -> int:
 def _build_audio_par_xml(
     shape_id: int, start_id: int
 ) -> etree._Element:
-    """音声auto-play用のp:parノードを構築する。"""
+    """音声auto-play用のp:parノードを構築する。
+
+    macOS PowerPoint互換のため p:audio ではなく p:cmd を使用する。
+    p:audio > p:cMediaNode はmacOS PowerPointで破損扱いされるが、
+    p:cmd type="call" cmd="playFrom(0)" は両プラットフォームで動作する。
+    """
     xml = f"""<p:par xmlns:p="{_P_NS}">
   <p:cTn id="{start_id}" fill="hold">
     <p:stCondLst>
@@ -511,23 +516,19 @@ def _build_audio_par_xml(
     </p:stCondLst>
     <p:childTnLst>
       <p:par>
-        <p:cTn id="{start_id + 1}" fill="hold">
+        <p:cTn id="{start_id + 1}" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" grpId="0" nodeType="afterEffect">
           <p:stCondLst>
             <p:cond delay="0"/>
           </p:stCondLst>
           <p:childTnLst>
-            <p:audio>
-              <p:cMediaNode>
-                <p:cTn id="{start_id + 2}" fill="hold" display="0">
-                  <p:stCondLst>
-                    <p:cond delay="0"/>
-                  </p:stCondLst>
-                </p:cTn>
+            <p:cmd type="call" cmd="playFrom(0)">
+              <p:cBhvr>
+                <p:cTn id="{start_id + 2}" dur="1" fill="hold"/>
                 <p:tgtEl>
                   <p:spTgt spid="{shape_id}"/>
                 </p:tgtEl>
-              </p:cMediaNode>
-            </p:audio>
+              </p:cBhvr>
+            </p:cmd>
           </p:childTnLst>
         </p:cTn>
       </p:par>
@@ -561,23 +562,19 @@ def _build_timing_xml(
                     </p:stCondLst>
                     <p:childTnLst>
                       <p:par>
-                        <p:cTn id="{ctn_id + 1}" fill="hold">
+                        <p:cTn id="{ctn_id + 1}" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" grpId="0" nodeType="afterEffect">
                           <p:stCondLst>
                             <p:cond delay="0"/>
                           </p:stCondLst>
                           <p:childTnLst>
-                            <p:audio>
-                              <p:cMediaNode>
-                                <p:cTn id="{ctn_id + 2}" fill="hold" display="0">
-                                  <p:stCondLst>
-                                    <p:cond delay="0"/>
-                                  </p:stCondLst>
-                                </p:cTn>
+                            <p:cmd type="call" cmd="playFrom(0)">
+                              <p:cBhvr>
+                                <p:cTn id="{ctn_id + 2}" dur="1" fill="hold"/>
                                 <p:tgtEl>
                                   <p:spTgt spid="{shape_id}"/>
                                 </p:tgtEl>
-                              </p:cMediaNode>
-                            </p:audio>
+                              </p:cBhvr>
+                            </p:cmd>
                           </p:childTnLst>
                         </p:cTn>
                       </p:par>

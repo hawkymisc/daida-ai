@@ -32,24 +32,44 @@ _nsmap = {
 _P14_MEDIA_URI = "{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"
 
 
-def _make_1x1_png() -> bytes:
-    """1x1透明PNGバイナリを生成する（音声シェイプのアイコンプレースホルダ用）。"""
+def _make_speaker_icon_png() -> bytes:
+    """32x32のスピーカーアイコンPNGを生成する。
+
+    macOS PowerPoint互換性のため、1x1透明PNGではなく
+    視認可能なスピーカーアイコンを使用する。
+    """
 
     def _chunk(chunk_type: bytes, data: bytes) -> bytes:
         c = chunk_type + data
         return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
 
+    width, height = 32, 32
+    # スピーカーアイコンを描画（簡易ビットマップ）
+    # 背景: #38BDF8 (tech accent), 前景: #1E293B (dark)
+    bg = (0x38, 0xBD, 0xF8, 200)
+    fg = (0x1E, 0x29, 0x3B, 255)
+    raw_data = b""
+    for y in range(height):
+        raw_data += b"\x00"  # filter byte
+        for x in range(width):
+            # スピーカー形状: 左側に台形、右側に音波ライン
+            in_body = 10 <= x <= 16 and 10 <= y <= 22
+            in_cone = 6 <= x <= 10 and 12 <= y <= 20
+            in_wave1 = x == 20 and 10 <= y <= 22
+            in_wave2 = x == 24 and 8 <= y <= 24
+            if in_body or in_cone or in_wave1 or in_wave2:
+                raw_data += bytes(fg)
+            else:
+                raw_data += bytes(bg)
+
     signature = b"\x89PNG\r\n\x1a\n"
-    # IHDR: 1x1, 8-bit RGBA
-    ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
-    # IDAT: 1 transparent pixel (filter byte 0 + RGBA 0,0,0,0)
-    raw_data = b"\x00\x00\x00\x00\x00"
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     idat_data = zlib.compress(raw_data)
     return signature + _chunk(b"IHDR", ihdr_data) + _chunk(b"IDAT", idat_data) + _chunk(b"IEND", b"")
 
 
 # モジュールレベルでキャッシュ
-_ICON_PNG = _make_1x1_png()
+_ICON_PNG = _make_speaker_icon_png()
 
 
 def embed_audio_to_pptx(

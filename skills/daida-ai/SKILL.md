@@ -480,6 +480,19 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_wi
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_with_audio.pptx output/presentation_final.pptx --silent-duration 5000 --audio-buffer 2000
 ```
 
+### ユーザーへの案内（必須）
+
+スライドショー設定完了後、**必ず以下の注意事項をユーザーに伝えること**:
+
+> **スライドショー再生前の確認事項**
+>
+> PowerPoint の「スライドショーの設定」で **「タイミングを使用」にチェック** が入っていることを確認してください。
+>
+> - **Windows**: 「スライドショー」タブ →「スライドショーの設定」→「タイミングを使用」にチェック
+> - **macOS**: 「スライドショー」メニュー →「スライドショーの設定...」→「オプション」→「タイミングを使用」にチェック
+>
+> このチェックが外れていると、自動ページ送りと音声自動再生が動作しません。
+
 ---
 
 ## フォーマット変換（オプション）
@@ -490,6 +503,46 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh convert_format.py output/presentation.pp
 ```
 
 **前提**: LibreOfficeがインストールされていること。
+
+---
+
+## クロスプラットフォーム互換性ノート
+
+### macOS PowerPoint との互換性
+
+代打AIが生成するPPTXは **macOS / Windows の両PowerPoint** および **LibreOffice Impress** で動作する。
+以下の技術的制約に注意すること。
+
+#### 音声自動再生（Step 6）
+
+| 方式 | macOS | Windows | LibreOffice |
+|------|-------|---------|-------------|
+| `p:cmd type="call" cmd="playFrom(0)"` | ✅ | ✅ | ✅ |
+| `p:audio > p:cMediaNode` | ❌ 破損扱い | ✅ | ✅ |
+
+- macOS PowerPoint は `p:audio > p:cMediaNode`（OOXML メディアノード方式）を**破損ファイルとして扱う**
+- 代わりに `p:cmd type="call" cmd="playFrom(0)"` （コマンドアニメーション方式）を使用する
+- `nodeType="afterEffect"` + `grpId="0"` で「前のアニメーション後に自動実行」を指定する
+- この方式は Windows PowerPoint / LibreOffice Impress でも正常に動作する
+
+#### 音声アイコン（Step 5）
+
+| アイコン | macOS | Windows |
+|---------|-------|---------|
+| 32×32 可視アイコン | ✅ 表示される | ✅ 表示される |
+| 1×1 透明PNG | ❌ 非表示 | ✅ 自動でスピーカーアイコン表示 |
+
+- macOS PowerPoint は透明アイコンをそのまま透明に表示する（Windows は自動でスピーカーアイコンに置換する）
+- そのため、音声埋め込み時に**32×32 の可視スピーカーアイコン**を使用する
+
+#### 自動ページ送り
+
+| 方式 | macOS | Windows | LibreOffice |
+|------|-------|---------|-------------|
+| `p:transition advTm` | ✅ | ✅ | ⚠️ mainSeq.dur 必要 |
+
+- LibreOffice Impress では `mainSeq.dur` を音声長に設定しないと `advTm` が発火しない
+- `make_slideshow.py` は自動で `mainSeq.dur` を設定するため、手動対応は不要
 
 ---
 

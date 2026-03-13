@@ -276,7 +276,7 @@ class TestE2EPipeline:
         for slide in final_prs.slides:
             timing = slide.element.find("p:timing", _ns)
             if timing is not None:
-                audio_nodes = timing.findall(".//p:audio", _ns)
+                audio_nodes = timing.findall(".//p:cmd", _ns)
                 if audio_nodes:
                     audio_slides_with_timing += 1
         assert audio_slides_with_timing > 0, "音声付きスライドにtimingが必要"

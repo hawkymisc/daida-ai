@@ -426,15 +426,21 @@ def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
         own_delay = _get_ctn_start_delay(outer_ctn)
         st_cond = outer_ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
 
-        if st_cond is not None and st_cond.get("evt") == "onEnd":
+        if st_cond is not None:
+            evt = st_cond.get("evt")
             tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
-            if tn_ref is not None:
+            if evt in ("onEnd", "onBegin") and tn_ref is not None:
                 ref_id = tn_ref.get("val")
                 ref_par_idx = ctn_id_to_par_idx.get(ref_id)
                 if ref_par_idx is not None and ref_par_idx != idx:
                     ref_start = get_start(ref_par_idx)
-                    ref_end = ref_start + par_internal_durs[ref_par_idx]
-                    par_starts[idx] = ref_end + own_delay
+                    if evt == "onEnd":
+                        # After Previous: 参照アニメーション終了後に開始
+                        base = ref_start + par_internal_durs[ref_par_idx]
+                    else:
+                        # With Previous (onBegin): 参照アニメーション開始と同時
+                        base = ref_start
+                    par_starts[idx] = base + own_delay
                     return par_starts[idx]
 
         par_starts[idx] = own_delay

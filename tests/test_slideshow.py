@@ -155,7 +155,7 @@ class Test音声自動再生:
         timing = prs.slides[0].element.find("p:timing", _ns)
         if timing is not None:
             # timing要素があっても音声アニメーションはない
-            audio_nodes = timing.findall(".//p:audio", _ns)
+            audio_nodes = timing.findall(".//p:cmd", _ns)
             assert len(audio_nodes) == 0
 
     def test_出力ファイルが正常に開ける(
@@ -305,7 +305,7 @@ class Test既存アニメーション保持:
         assert timing is not None
 
         # 音声auto-playノードが追加されている
-        audio_nodes = timing.findall(".//p:audio", _ns)
+        audio_nodes = timing.findall(".//p:cmd", _ns)
         assert len(audio_nodes) >= 1, "音声auto-playノードが追加されるべき"
 
     def test_二重実行しても音声ノードが重複しない(
@@ -322,7 +322,7 @@ class Test既存アニメーション保持:
         timing = prs.slides[1].element.find("p:timing", _ns)
         assert timing is not None
 
-        audio_nodes = timing.findall(".//p:audio", _ns)
+        audio_nodes = timing.findall(".//p:cmd", _ns)
         assert len(audio_nodes) == 1, "audioノードは1つだけであるべき"
 
 
@@ -346,7 +346,7 @@ class Testフォールバック:
         # スライド1は音声シェイプあり → timing要素が追加される
         timing = prs.slides[1].element.find("p:timing", _ns)
         assert timing is not None
-        audio_nodes = timing.findall(".//p:audio", _ns)
+        audio_nodes = timing.findall(".//p:cmd", _ns)
         assert len(audio_nodes) >= 1
 
     def test_unmeasurable_duration_msがadvTmに反映される(
@@ -740,7 +740,7 @@ class TestLibreOffice互換mainSeqDur:
         )
 
         # 既存アニメーションノードが重複していないことも確認
-        audio_nodes = slide.element.findall(".//p:audio", _ns)
+        audio_nodes = slide.element.findall(".//p:cmd", _ns)
         assert len(audio_nodes) == 1, (
             f"2回適用しても audio ノードは1つだけであるべき: {len(audio_nodes)} 個"
         )
@@ -807,7 +807,7 @@ class TestLibreOffice互換mainSeqDur:
 
         prs = Presentation(str(output2))
         for i, slide in enumerate(prs.slides):
-            audio_nodes = slide.element.findall(".//p:audio", _ns)
+            audio_nodes = slide.element.findall(".//p:cmd", _ns)
             assert len(audio_nodes) <= 1, (
                 f"スライド {i}: audio ノードが重複してはいけない: {len(audio_nodes)} 個"
             )

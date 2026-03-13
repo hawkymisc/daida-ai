@@ -811,3 +811,65 @@ class TestLibreOffice互換mainSeqDur:
             assert len(audio_nodes) <= 1, (
                 f"スライド {i}: audio ノードが重複してはいけない: {len(audio_nodes)} 個"
             )
+
+    def test_再実行時に短縮された音声長でmainSeq_durが縮小される(
+        self, tmp_output_dir: Path
+    ):
+        """configure_slideshow を2回実行し、2回目の音声長が短い場合に
+        mainSeq.dur がその短い値に更新されること（stale durにならない）。
+
+        LibreOffice は mainSeq.dur >= advTm でないとページ送りが発火しないため、
+        再実行後も dur <= advTm が保証されている必要がある。
+        """
+        from unittest.mock import patch
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[Slide(layout="title_slide", title="表紙")],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "shrink_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_shrink"
+        audio_dir.mkdir()
+        # WAV ヘッダ (non-MP3) → _get_audio_duration_ms が 0 を返す
+        # これにより unmeasurable_duration_ms がフォールバックとして使われる
+        wav_header = b"RIFF" + b"\x00" * 40
+        (audio_dir / "slide_000.mp3").write_bytes(wav_header)
+
+        out_with_audio = tmp_output_dir / "shrink_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, out_with_audio)
+
+        # 1回目: 長い unmeasurable_duration_ms (30秒) で configure
+        out_pass1 = tmp_output_dir / "shrink_pass1.pptx"
+        configure_slideshow(out_with_audio, out_pass1, unmeasurable_duration_ms=30000)
+
+        prs1 = Presentation(str(out_pass1))
+        slide1 = prs1.slides[0]
+        main_seq1 = slide1.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+        assert main_seq1 is not None
+        dur1 = int(main_seq1.get("dur"))
+        assert dur1 >= 1
+
+        # 2回目: 短い unmeasurable_duration_ms (5秒) で再 configure
+        out_pass2 = tmp_output_dir / "shrink_pass2.pptx"
+        configure_slideshow(out_pass1, out_pass2, unmeasurable_duration_ms=5000)
+
+        prs2 = Presentation(str(out_pass2))
+        slide2 = prs2.slides[0]
+        trans2 = slide2.element.find("p:transition", _ns)
+        main_seq2 = slide2.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        assert main_seq2 is not None
+        dur2 = int(main_seq2.get("dur"))
+        adv_tm2 = int(trans2.get("advTm"))
+
+        # 短い音声長で上書きされていること
+        assert dur2 < dur1, (
+            f"2回目の短い音声長({5000}ms)で dur が縮小されるべき: "
+            f"pass1={dur1}ms, pass2={dur2}ms"
+        )
+        assert dur2 <= adv_tm2, (
+            f"mainSeq dur({dur2}ms) は advTm({adv_tm2}ms) 以下であるべき"
+        )

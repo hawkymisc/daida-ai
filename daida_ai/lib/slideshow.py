@@ -278,18 +278,12 @@ def _merge_audio_into_timing(
     if main_seq_ctn is None:
         return
 
-    # LibreOffice互換: mainSeq の dur を音声長に更新する
-    # 既存の dur が数値の場合は大きい方を使う（非音声アニメーションのタイムラインを保護）
+    # LibreOffice互換: mainSeq の dur を最新の音声長で上書きする。
+    # 再実行時に短縮された音声が反映されるよう、常に上書きする（max()は使わない）。
+    # configure_slideshow は音声駆動スライドショーを前提とするため、
+    # mainSeq.dur は常に現在の音声長と一致させる。
     if main_seq_dur_ms > 0:
-        existing_dur = main_seq_ctn.get("dur", "indefinite")
-        if existing_dur == "indefinite":
-            new_dur = main_seq_dur_ms
-        else:
-            try:
-                new_dur = max(int(existing_dur), main_seq_dur_ms)
-            except ValueError:
-                new_dur = main_seq_dur_ms
-        main_seq_ctn.set("dur", str(new_dur))
+        main_seq_ctn.set("dur", str(main_seq_dur_ms))
 
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:

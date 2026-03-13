@@ -278,12 +278,14 @@ def _merge_audio_into_timing(
     if main_seq_ctn is None:
         return
 
-    # LibreOffice互換: mainSeq の dur を最新の音声長で上書きする。
-    # 再実行時に短縮された音声が反映されるよう、常に上書きする（max()は使わない）。
-    # configure_slideshow は音声駆動スライドショーを前提とするため、
-    # mainSeq.dur は常に現在の音声長と一致させる。
+    # LibreOffice互換: mainSeq の dur を更新する。
+    # 比較対象は「以前のmainSeq.dur値（ステール可能性あり）」ではなく、
+    # 「childTnLst内の明示的なdur属性を持つ非音声アニメーション」にする。
+    # 音声ノードはdur属性を持たないため自然にフィルタされる。
+    # これにより: (1)再実行時に短縮された音声長が反映される (2)既存非音声アニメーションが保護される
     if main_seq_dur_ms > 0:
-        main_seq_ctn.set("dur", str(main_seq_dur_ms))
+        max_child = _get_max_child_animation_dur_ms(main_seq_ctn)
+        main_seq_ctn.set("dur", str(max(main_seq_dur_ms, max_child)))
 
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:
@@ -310,6 +312,26 @@ def _merge_audio_into_timing(
         audio_par = _build_audio_par_xml(shape_id, max_id + 1)
         child_tn_lst.append(audio_par)
         max_id += 3  # 各audioノードはcTn idを3つ使う
+
+
+def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
+    """mainSeq の childTnLst 内の既存アニメーション最大時間(ms)を返す。
+
+    音声ノード (dur属性なし) はカウントしない。
+    明示的な数値 dur を持つ cTn の最大値を返す。
+    """
+    child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
+    if child_tn_lst is None:
+        return 0
+    max_dur = 0
+    for ctn in child_tn_lst.iter(f"{{{_P_NS}}}cTn"):
+        dur_val = ctn.get("dur")
+        if dur_val is not None and dur_val != "indefinite":
+            try:
+                max_dur = max(max_dur, int(dur_val))
+            except ValueError:
+                pass
+    return max_dur
 
 
 def _get_max_ctn_id(timing_elem: etree._Element) -> int:

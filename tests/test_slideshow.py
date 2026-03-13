@@ -873,3 +873,94 @@ class TestLibreOffice互換mainSeqDur:
         assert dur2 <= adv_tm2, (
             f"mainSeq dur({dur2}ms) は advTm({adv_tm2}ms) 以下であるべき"
         )
+
+    def test_既存非音声アニメーションより短い音声でもtimeline保護される(
+        self, tmp_output_dir: Path
+    ):
+        """音声長 < 既存アニメーションdur のとき、mainSeq.dur は既存アニメーション長以上になる。
+
+        音声(6ms)より長い非音声アニメーション(500ms)が存在する場合、
+        mainSeq.dur が 500ms 以上になることで既存アニメーションが切り詰められない。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "anim_protect_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_anim_protect"
+        audio_dir.mkdir()
+        # 約6msのフェイクMP3 (音声長 < 500ms)
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "anim_protect_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # スライド1に500msの非音声アニメーションを注入
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" fill="hold">
+                          <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="500" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "anim_protect_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "anim_protect_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        main_seq = slide_out.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+        assert main_seq is not None
+
+        dur = int(main_seq.get("dur"))
+        assert dur >= 500, (
+            f"mainSeq.dur({dur}ms) は既存アニメーション(500ms)以上であるべき"
+        )
+        assert main_seq.get("dur") != "indefinite", (
+            "mainSeq.dur は 'indefinite' のまま残ってはいけない"
+        )

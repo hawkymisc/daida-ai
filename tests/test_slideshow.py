@@ -1543,3 +1543,183 @@ class TestLibreOffice互換mainSeqDur:
         assert adv_tm >= 10000, (
             f"advTm({adv_tm}ms) は 10000ms + buffer 以上であるべき"
         )
+
+    def test_repeatCountアニメーションで繰り返し時間がtimelineに反映される(
+        self, tmp_output_dir: Path
+    ):
+        """repeatCount="3" + dur="1000" のアニメーションは実効3000msとして計算されること。
+
+        単純にdur=1000msとして計算すると advTm が短すぎてアニメーション完了前にスライドが進む。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "repeat_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_repeat"
+        audio_dir.mkdir()
+        # 音声長 << 3000ms
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "repeat_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # repeatCount="3" + dur="1000" → 実効3000ms
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="1000" repeatCount="3" fill="hold">
+                          <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="1000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "repeat_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "repeat_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        main_seq = slide_out.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        assert main_seq is not None
+        adv_tm = int(trans.get("advTm"))
+
+        # dur=1000 * repeatCount=3 = 3000ms → advTm >= 3000ms
+        assert adv_tm >= 3000, (
+            f"advTm({adv_tm}ms) は repeatCount=3 * dur=1000ms = 3000ms 以上であるべき"
+        )
+
+    def test_onClickアニメーションはtimelineに含まれない(
+        self, tmp_output_dir: Path
+    ):
+        """evt="onClick" のアニメーションは無人再生では発動しないため、
+        advTm の計算から除外されることを確認する。
+
+        onClick アニメーション(dur=10000ms)があっても advTm は音声長ベースになる。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "onclick_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_onclick"
+        audio_dir.mkdir()
+        # 約6msのフェイクMP3
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "onclick_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        # evt="onClick" + dur=10000ms のアニメーション（クリックしないと発動しない）
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst>
+                      <p:cond delay="0" evt="onClick"><p:tn val="2"/></p:cond>
+                    </p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="10000" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="10000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "onclick_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "onclick_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+
+        adv_tm = int(trans.get("advTm"))
+
+        # onClick アニメーション(10000ms)は無視されるため、advTm << 10000ms
+        assert adv_tm < 10000, (
+            f"advTm({adv_tm}ms) は onClick アニメーション(10000ms)の影響を受けてはいけない"
+        )

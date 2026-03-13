@@ -349,7 +349,16 @@ def _calc_par_end_ms(par_elem: etree._Element, parent_delay: int) -> int:
     own_end = total_delay
     if dur_val and dur_val != "indefinite":
         try:
-            own_end = total_delay + int(dur_val)
+            raw_dur = int(dur_val)
+            repeat_dur_val = ctn.get("repeatDur")
+            repeat_count_val = ctn.get("repeatCount")
+            if repeat_dur_val and repeat_dur_val != "indefinite":
+                effective_dur = int(repeat_dur_val)
+            elif repeat_count_val and repeat_count_val != "indefinite":
+                effective_dur = int(raw_dur * float(repeat_count_val))
+            else:
+                effective_dur = raw_dur
+            own_end = total_delay + effective_dur
         except ValueError:
             pass
 
@@ -428,6 +437,10 @@ def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
 
         if st_cond is not None:
             evt = st_cond.get("evt")
+            if evt == "onClick":
+                # クリックトリガーは無人再生では発動しないためスキップ (-1 = sentinel)
+                par_starts[idx] = -1
+                return -1
             tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
             if evt in ("onEnd", "onBegin") and tn_ref is not None:
                 ref_id = tn_ref.get("val")
@@ -448,7 +461,10 @@ def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
 
     max_end = 0
     for i in range(len(par_list)):
-        end = get_start(i) + par_internal_durs[i]
+        start = get_start(i)
+        if start < 0:
+            continue  # onClick など無人再生でスキップされるアニメーション
+        end = start + par_internal_durs[i]
         max_end = max(max_end, end)
     return max_end
 

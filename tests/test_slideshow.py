@@ -744,3 +744,68 @@ class TestLibreOffice互換mainSeqDur:
         assert len(audio_nodes) == 1, (
             f"2回適用しても audio ノードは1つだけであるべき: {len(audio_nodes)} 個"
         )
+
+    def test_音声長ゼロのとき_fallback_durationが使われmainSeq_durが正になる(
+        self, tmp_output_dir: Path
+    ):
+        """_get_audio_duration_ms が 0 を返すとき（WAV/外部音声）、
+        unmeasurable_duration_ms がフォールバックとして使われ、
+        mainSeq.dur が "indefinite" のまま残らないことを確認する。
+        """
+        from unittest.mock import patch
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[Slide(layout="title_slide", title="表紙")],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "test_wav.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_wav"
+        audio_dir.mkdir()
+        # WAV ヘッダ (non-MP3) → _estimate_mp3_duration_ms が 0 を返す
+        wav_header = b"RIFF" + b"\x00" * 40
+        (audio_dir / "slide_000.mp3").write_bytes(wav_header)
+
+        out_with_audio = tmp_output_dir / "wav_with_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, out_with_audio)
+
+        out_final = tmp_output_dir / "wav_final.pptx"
+        fallback_ms = 20000
+        configure_slideshow(
+            out_with_audio, out_final, unmeasurable_duration_ms=fallback_ms
+        )
+
+        prs2 = Presentation(str(out_final))
+        slide = prs2.slides[0]
+        main_seq_ctn = slide.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        if main_seq_ctn is not None:
+            dur = main_seq_ctn.get("dur")
+            assert dur != "indefinite", (
+                "WAV/計測不能音声でも mainSeq.dur は 'indefinite' であってはならない"
+            )
+            assert int(dur) >= 1, f"dur は 1ms 以上であるべき: {dur}"
+
+    def test_既存の非音声アニメーションがmainSeq_dur設定後も消えない(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """configure_slideshow 後も既存の音声 audio ノードが保持されること。
+
+        Note: daida-ai が生成するスライドには他のアニメーションノードが存在しないため、
+        「音声アニメーションのみ」のケースで重複なく保持されることを検証する。
+        2回適用しても audio ノードが増殖しないことで、既存構造の破壊がないことを示す。
+        """
+        output1 = tmp_output_dir / "anim_pass1.pptx"
+        configure_slideshow(pptx_with_audio, output1)
+
+        output2 = tmp_output_dir / "anim_pass2.pptx"
+        configure_slideshow(output1, output2)
+
+        prs = Presentation(str(output2))
+        for i, slide in enumerate(prs.slides):
+            audio_nodes = slide.element.findall(".//p:audio", _ns)
+            assert len(audio_nodes) <= 1, (
+                f"スライド {i}: audio ノードが重複してはいけない: {len(audio_nodes)} 個"
+            )

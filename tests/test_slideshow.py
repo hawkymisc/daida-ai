@@ -1052,3 +1052,188 @@ class TestLibreOffice互換mainSeqDur:
             f"mainSeq.dur({dur}ms) は遅延(5000ms)+アニメーション(1000ms)=6000ms以上であるべき"
         )
         assert main_seq.get("dur") != "indefinite"
+
+    def test_ネスト遅延のアニメーションでmainSeq_durが累積遅延を考慮する(
+        self, tmp_output_dir: Path
+    ):
+        """外側delay=5000 + 内側delay=2000 + dur=1000 の場合、
+        mainSeq.dur >= 8000ms になることを確認する（ネスト遅延の累積）。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "nested_delay_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_nested_delay"
+        audio_dir.mkdir()
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "nested_delay_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        # 外側 delay=5000, 内側 delay=2000, dur=1000 → 終了時刻 = 5000 + 2000 + 1000 = 8000ms
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="5000"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="1000" fill="hold">
+                          <p:stCondLst><p:cond delay="2000"/></p:stCondLst>
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="1000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "nested_delay_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "nested_delay_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        main_seq = slide_out.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        assert main_seq is not None
+        dur = int(main_seq.get("dur"))
+        adv_tm = int(trans.get("advTm"))
+
+        assert dur >= 8000, (
+            f"mainSeq.dur({dur}ms) は外側delay(5000)+内側delay(2000)+dur(1000)=8000ms以上であるべき"
+        )
+        assert adv_tm >= 8000, (
+            f"advTm({adv_tm}ms) は既存アニメーション終了時刻(8000ms)以上であるべき"
+        )
+
+    def test_既存アニメーションが長い場合advTmがアニメーション長に同期される(
+        self, tmp_output_dir: Path
+    ):
+        """音声長 < 既存アニメーション終了時刻のとき、
+        advTm が既存アニメーション長 + buffer 以上になることを確認する。
+
+        PowerPoint はadvTmで進むため、advTmが短いと既存アニメーション完了前に
+        スライドが進んでしまう。advTmは max(音声長, アニメーション終了) + buffer 以上にする。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "adv_sync_base.pptx"
+        prs.save(str(pptx_path))
+
+        audio_dir = tmp_output_dir / "audio_adv_sync"
+        audio_dir.mkdir()
+        # 約6msのフェイクMP3 (音声長 << 5000ms アニメーション)
+        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
+        with_audio = tmp_output_dir / "adv_sync_audio.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
+
+        prs2 = Presentation(str(with_audio))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="5000" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="5000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_existing = tmp_output_dir / "adv_sync_existing.pptx"
+        prs2.save(str(with_existing))
+
+        out = tmp_output_dir / "adv_sync_out.pptx"
+        configure_slideshow(with_existing, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        main_seq = slide_out.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        assert main_seq is not None
+        adv_tm = int(trans.get("advTm"))
+        dur = int(main_seq.get("dur"))
+
+        # advTm は既存アニメーション(5000ms) + buffer(1000ms) = 6000ms 以上
+        assert adv_tm >= 5000 + 1000, (
+            f"advTm({adv_tm}ms) は 既存アニメーション(5000ms) + buffer(1000ms) 以上であるべき"
+        )
+        assert dur >= 5000, (
+            f"mainSeq.dur({dur}ms) は既存アニメーション(5000ms)以上であるべき"
+        )

@@ -315,23 +315,48 @@ def _merge_audio_into_timing(
 
 
 def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
-    """mainSeq の childTnLst 内の既存アニメーション最大時間(ms)を返す。
+    """mainSeq の childTnLst 内の既存アニメーション終了時刻の最大値(ms)を返す。
 
-    音声ノード (dur属性なし) はカウントしない。
-    明示的な数値 dur を持つ cTn の最大値を返す。
+    各 p:par の「開始遅延 + サブツリー最大dur」を計算して最大値を返す。
+    開始遅延は p:cTn/p:stCondLst/p:cond/@delay から取得する。
+    音声ノード (dur属性なし) は実質カウントされない。
     """
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:
         return 0
-    max_dur = 0
-    for ctn in child_tn_lst.iter(f"{{{_P_NS}}}cTn"):
-        dur_val = ctn.get("dur")
-        if dur_val is not None and dur_val != "indefinite":
-            try:
-                max_dur = max(max_dur, int(dur_val))
-            except ValueError:
-                pass
-    return max_dur
+
+    max_end = 0
+    for par in child_tn_lst.findall(f"{{{_P_NS}}}par"):
+        ctn = par.find(f"{{{_P_NS}}}cTn")
+        if ctn is None:
+            continue
+
+        # 開始遅延: p:cTn/p:stCondLst/p:cond/@delay
+        start_delay = 0
+        st_cond = ctn.find(
+            f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond"
+        )
+        if st_cond is not None:
+            delay_val = st_cond.get("delay", "0")
+            if delay_val != "indefinite":
+                try:
+                    start_delay = int(delay_val)
+                except ValueError:
+                    pass
+
+        # サブツリー内の最大 dur (音声ノードはdur属性なしのためスキップされる)
+        max_dur = 0
+        for sub_ctn in ctn.iter(f"{{{_P_NS}}}cTn"):
+            dur_val = sub_ctn.get("dur")
+            if dur_val is not None and dur_val != "indefinite":
+                try:
+                    max_dur = max(max_dur, int(dur_val))
+                except ValueError:
+                    pass
+
+        max_end = max(max_end, start_delay + max_dur)
+
+    return max_end
 
 
 def _get_max_ctn_id(timing_elem: etree._Element) -> int:

@@ -93,7 +93,11 @@ def configure_slideshow(
             # notifySlideAnimationsEnded() が呼ばれず advTm が発火しない。
             # 音声長を dur に設定することで音声終了時にアニメーションが終わり、
             # LibreOffice のページ自動送りが正しく動作する。
-            main_seq_dur_ms = audio_duration if audio_duration > 0 else unmeasurable_duration_ms
+            # LibreOffice互換のため mainSeq.dur は必ず正の値にする。
+            # unmeasurable_duration_ms が 0 以下の場合でも最低 1ms を保証し、
+            # "indefinite" のまま残ることを防ぐ。
+            raw_dur = audio_duration if audio_duration > 0 else unmeasurable_duration_ms
+            main_seq_dur_ms = max(raw_dur, 1)
             _add_auto_play_animation(slide, main_seq_dur_ms=main_seq_dur_ms)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -708,3 +708,39 @@ class TestLibreOffice互換mainSeqDur:
         assert dur <= adv_tm, (
             f"mainSeq dur({dur}ms) は advTm({adv_tm}ms) 以下であるべき"
         )
+
+    def test_既存timingがある場合もmainSeq_durが更新される(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """configure_slideshow を2回適用しても mainSeq.dur が正しく更新される。
+
+        実際のデッキでは既存の p:timing を持つスライドがある。
+        _merge_audio_into_timing パスで mainSeq.dur が上書きされることを確認する。
+        """
+        # 1回目: timing が新規作成される
+        output1 = tmp_output_dir / "show_lo_pass1.pptx"
+        configure_slideshow(pptx_with_audio, output1)
+
+        # 2回目: 既存 timing を持つスライドに対して _merge_audio_into_timing が呼ばれる
+        output2 = tmp_output_dir / "show_lo_pass2.pptx"
+        configure_slideshow(output1, output2)
+
+        prs = Presentation(str(output2))
+        slide = prs.slides[1]  # 音声ありスライド (index 1)
+
+        main_seq_ctn = slide.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+        assert main_seq_ctn is not None, "mainSeq p:cTn が存在すること"
+
+        dur = main_seq_ctn.get("dur")
+        assert dur != "indefinite", (
+            f"_merge_audio_into_timing 経由でも dur が 'indefinite' のまま残ってはいけない: {dur}"
+        )
+        assert dur is not None and int(dur) > 0, (
+            f"dur は正の整数(ms)であること: {dur}"
+        )
+
+        # 既存アニメーションノードが重複していないことも確認
+        audio_nodes = slide.element.findall(".//p:audio", _ns)
+        assert len(audio_nodes) == 1, (
+            f"2回適用しても audio ノードは1つだけであるべき: {len(audio_nodes)} 個"
+        )

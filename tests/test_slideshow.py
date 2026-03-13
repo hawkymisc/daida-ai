@@ -781,12 +781,14 @@ class TestLibreOffice互換mainSeqDur:
         slide = prs2.slides[0]
         main_seq_ctn = slide.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
 
-        if main_seq_ctn is not None:
-            dur = main_seq_ctn.get("dur")
-            assert dur != "indefinite", (
-                "WAV/計測不能音声でも mainSeq.dur は 'indefinite' であってはならない"
-            )
-            assert int(dur) >= 1, f"dur は 1ms 以上であるべき: {dur}"
+        assert main_seq_ctn is not None, (
+            "WAV/計測不能音声でも p:timing/mainSeq が生成されるべき"
+        )
+        dur = main_seq_ctn.get("dur")
+        assert dur != "indefinite", (
+            "WAV/計測不能音声でも mainSeq.dur は 'indefinite' であってはならない"
+        )
+        assert int(dur) >= 1, f"dur は 1ms 以上であるべき: {dur}"
 
     def test_既存の非音声アニメーションがmainSeq_dur設定後も消えない(
         self, pptx_with_audio: Path, tmp_output_dir: Path

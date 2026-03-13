@@ -1238,15 +1238,13 @@ class TestLibreOffice互換mainSeqDur:
             f"mainSeq.dur({dur}ms) は既存アニメーション(5000ms)以上であるべき"
         )
 
-    def test_既知制限_onEndイベント連鎖アニメーションの合計は計算されない(
+    def test_onEndイベント連鎖アニメーションの合計時間が計算される(
         self, tmp_output_dir: Path
     ):
-        """[既知の制限] "After Previous" (evt="onEnd") による連鎖アニメーションの
-        合計時間は計算されない。各エフェクトの最大時間のみが考慮される。
+        """"After Previous" (evt="onEnd") による連鎖アニメーションの
+        合計時間が正しく計算されることを確認する。
 
-        daida-ai は "After Previous" アニメーションを生成しないため実用上問題なし。
-        外部 PPTX を configure_slideshow に渡す場合は、連鎖アニメーションの
-        合計が正確に計算されないことに注意。
+        anim1(dur=1000ms) → anim2(onEnd→anim1, dur=2000ms) = 合計3000ms
         """
         from lxml import etree
 
@@ -1346,10 +1344,84 @@ class TestLibreOffice互換mainSeqDur:
         assert main_seq is not None
         dur = int(main_seq.get("dur"))
 
-        # [既知制限] onEnd チェーンの合計(3000ms)は計算されず、最大値(2000ms)が使われる
-        # daida-ai は onEnd チェーンを生成しないため実用上は問題なし
-        assert dur >= 2000, (
-            f"mainSeq.dur({dur}ms) は少なくとも最大エフェクト長(2000ms)以上であるべき"
+        # onEnd チェーンの合計: anim1(1000ms) + anim2(onEnd→anim1, 2000ms) = 3000ms
+        assert dur >= 3000, (
+            f"mainSeq.dur({dur}ms) は onEnd チェーン合計(1000+2000=3000ms)以上であるべき"
         )
-        # 合計3000msが計算されないことは既知の制限 — これが変わった場合テストを更新する
-        # (3000ms以上であれば改善されたことを示す)
+
+    def test_音声なしスライドでも既存アニメーション長がadvTmに反映される(
+        self, tmp_output_dir: Path
+    ):
+        """音声なしスライドに既存アニメーション(5000ms)がある場合、
+        advTm >= 5000ms + buffer になることを確認する。
+        """
+        from lxml import etree
+
+        _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="LT", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_slide", title="表紙"),
+                Slide(layout="title_and_content", title="内容", body=["a"]),
+            ],
+        )
+        prs = build_presentation(spec)
+        pptx_path = tmp_output_dir / "silent_anim_base.pptx"
+        prs.save(str(pptx_path))
+
+        # 音声なし、スライド1に5000msのアニメーションを注入
+        prs2 = Presentation(str(pptx_path))
+        slide = prs2.slides[1]
+        timing_xml = f"""<p:timing xmlns:p="{_P}">
+  <p:tnLst>
+    <p:par>
+      <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+        <p:childTnLst>
+          <p:seq concurrent="1" nextAc="seek">
+            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+              <p:childTnLst>
+                <p:par>
+                  <p:cTn id="3" fill="hold">
+                    <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                    <p:childTnLst>
+                      <p:par>
+                        <p:cTn id="4" dur="5000" fill="hold">
+                          <p:childTnLst>
+                            <p:anim calcmode="lin" valueType="num">
+                              <p:cBhvr>
+                                <p:cTn id="5" dur="5000" fill="hold"/>
+                                <p:tgtEl><p:spTgt spid="2"/></p:tgtEl>
+                                <p:attrNameLst><p:attrName>style.opacity</p:attrName></p:attrNameLst>
+                              </p:cBhvr>
+                            </p:anim>
+                          </p:childTnLst>
+                        </p:cTn>
+                      </p:par>
+                    </p:childTnLst>
+                  </p:cTn>
+                </p:par>
+              </p:childTnLst>
+            </p:cTn>
+          </p:seq>
+        </p:childTnLst>
+      </p:cTn>
+    </p:par>
+  </p:tnLst>
+</p:timing>"""
+        slide.element.append(etree.fromstring(timing_xml))
+        with_anim = tmp_output_dir / "silent_anim_with.pptx"
+        prs2.save(str(with_anim))
+
+        out = tmp_output_dir / "silent_anim_out.pptx"
+        configure_slideshow(with_anim, out)
+
+        prs3 = Presentation(str(out))
+        slide_out = prs3.slides[1]
+        trans = slide_out.element.find("p:transition", _ns)
+        adv_tm = int(trans.get("advTm"))
+
+        # 音声なしスライドでも既存アニメーション(5000ms) + buffer(1000ms) = 6000ms 以上
+        assert adv_tm >= 5000 + 1000, (
+            f"advTm({adv_tm}ms) は 既存アニメーション(5000ms) + buffer(1000ms) 以上であるべき"
+        )

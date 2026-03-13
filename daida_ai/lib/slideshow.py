@@ -88,6 +88,10 @@ def configure_slideshow(
                 advance_ms = note_duration
             else:
                 advance_ms = silent_duration_ms
+            # 音声なしスライドでも既存アニメーション長を考慮する
+            existing_end = _get_existing_anim_end_ms(slide)
+            if existing_end > 0:
+                advance_ms = max(advance_ms, existing_end + audio_buffer_ms)
 
         # ECMA-376 CT_Slide: transition? は timing? より前に来る必要がある
         # transitionを先に設定してからtimingを追加する
@@ -379,25 +383,67 @@ def _calc_par_end_ms(par_elem: etree._Element, parent_delay: int) -> int:
 def _get_max_child_animation_dur_ms(main_seq_ctn: etree._Element) -> int:
     """mainSeq の childTnLst 内の既存アニメーション終了時刻の最大値(ms)を返す。
 
-    各 p:par の終了時刻を _calc_par_end_ms で再帰計算し最大値を返す。
+    各 p:par の終了時刻を再帰計算し、evt="onEnd" による連鎖も解決する。
     音声ノード (dur属性なし) は実質カウントされない。
-
-    **スコープ制限**: この実装は p:stCondLst/p:cond/@delay による明示的な
-    絶対遅延を処理する。PowerPoint の "After Previous" アニメーション
-    (p:prevCondLst/p:nextCondLst または evt="onEnd" 等のイベント条件) による
-    連鎖は解析しない（依存グラフ解決が必要なため）。
-
-    daida-ai が生成するスライドには "After Previous" アニメーションは存在しない
-    ため、このツールの実用上の問題はない。外部 PPTX で複雑なアニメーション
-    チェーンが含まれる場合は、計算値が実際の終了時刻より短くなる可能性がある。
     """
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:
         return 0
 
+    par_list = child_tn_lst.findall(f"{{{_P_NS}}}par")
+    if not par_list:
+        return 0
+
+    # Step 1: cTn id → par index マップを構築
+    ctn_id_to_par_idx: dict[str, int] = {}
+    for i, par in enumerate(par_list):
+        for ctn in par.iter(f"{{{_P_NS}}}cTn"):
+            ctn_id = ctn.get("id")
+            if ctn_id:
+                ctn_id_to_par_idx[ctn_id] = i
+
+    # Step 2: 各 par の内部所要時間を計算（outer stCondLst の遅延を除く）
+    par_internal_durs: list[int] = []
+    for par in par_list:
+        outer_ctn = par.find(f"{{{_P_NS}}}cTn")
+        own_delay = _get_ctn_start_delay(outer_ctn) if outer_ctn is not None else 0
+        total_end = _calc_par_end_ms(par, 0)
+        par_internal_durs.append(max(0, total_end - own_delay))
+
+    # Step 3: evt="onEnd" 依存を解決して開始時刻を計算
+    par_starts: dict[int, int] = {}
+
+    def get_start(idx: int) -> int:
+        if idx in par_starts:
+            return par_starts[idx]
+
+        par = par_list[idx]
+        outer_ctn = par.find(f"{{{_P_NS}}}cTn")
+        if outer_ctn is None:
+            par_starts[idx] = 0
+            return 0
+
+        own_delay = _get_ctn_start_delay(outer_ctn)
+        st_cond = outer_ctn.find(f"{{{_P_NS}}}stCondLst/{{{_P_NS}}}cond")
+
+        if st_cond is not None and st_cond.get("evt") == "onEnd":
+            tn_ref = st_cond.find(f"{{{_P_NS}}}tn")
+            if tn_ref is not None:
+                ref_id = tn_ref.get("val")
+                ref_par_idx = ctn_id_to_par_idx.get(ref_id)
+                if ref_par_idx is not None and ref_par_idx != idx:
+                    ref_start = get_start(ref_par_idx)
+                    ref_end = ref_start + par_internal_durs[ref_par_idx]
+                    par_starts[idx] = ref_end + own_delay
+                    return par_starts[idx]
+
+        par_starts[idx] = own_delay
+        return own_delay
+
     max_end = 0
-    for par in child_tn_lst.findall(f"{{{_P_NS}}}par"):
-        max_end = max(max_end, _calc_par_end_ms(par, 0))
+    for i in range(len(par_list)):
+        end = get_start(i) + par_internal_durs[i]
+        max_end = max(max_end, end)
     return max_end
 
 

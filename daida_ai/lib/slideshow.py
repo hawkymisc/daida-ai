@@ -88,7 +88,13 @@ def configure_slideshow(
         # transitionを先に設定してからtimingを追加する
         _set_auto_advance(slide, advance_ms)
         if has_audio_shapes:
-            _add_auto_play_animation(slide)
+            # mainSeq の dur を音声の実際の長さに設定する。
+            # LibreOffice は mainSeq dur="indefinite" のままだと
+            # notifySlideAnimationsEnded() が呼ばれず advTm が発火しない。
+            # 音声長を dur に設定することで音声終了時にアニメーションが終わり、
+            # LibreOffice のページ自動送りが正しく動作する。
+            main_seq_dur_ms = audio_duration if audio_duration > 0 else unmeasurable_duration_ms
+            _add_auto_play_animation(slide, main_seq_dur_ms=main_seq_dur_ms)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
@@ -209,11 +215,17 @@ def _set_auto_advance(slide, advance_ms: int) -> None:
     trans.set("advTm", str(advance_ms))
 
 
-def _add_auto_play_animation(slide) -> None:
+def _add_auto_play_animation(slide, *, main_seq_dur_ms: int = 0) -> None:
     """スライドの音声シェイプに自動再生アニメーションを設定する。
 
     既存のアニメーション（テキスト・図形等）を保持しつつ、
     音声auto-playノードをmainSeqにマージする。
+
+    Args:
+        slide: python-pptxのスライドオブジェクト
+        main_seq_dur_ms: mainSeqのdur属性をミリ秒で指定（0の場合は"indefinite"）。
+            LibreOffice互換性のため音声長を渡すと、アニメーション終了が
+            notifySlideAnimationsEnded() を確実に発火させる。
 
     PowerPointのアニメーション構造:
     p:timing > p:tnLst > p:par (tmRoot) > p:childTnLst > p:seq (mainSeq) >
@@ -229,20 +241,31 @@ def _add_auto_play_animation(slide) -> None:
 
     if existing_timing is not None:
         # 既存のtiming構造にaudioノードをマージ
-        _merge_audio_into_timing(existing_timing, audio_shape_ids)
+        _merge_audio_into_timing(existing_timing, audio_shape_ids,
+                                  main_seq_dur_ms=main_seq_dur_ms)
     else:
         # timing要素がない場合は新規作成
-        timing_elem = _build_timing_xml(audio_shape_ids)
+        timing_elem = _build_timing_xml(audio_shape_ids,
+                                         main_seq_dur_ms=main_seq_dur_ms)
         _insert_slide_child(slide_elem, timing_elem)
 
 
 def _merge_audio_into_timing(
-    timing_elem: etree._Element, audio_shape_ids: list[int]
+    timing_elem: etree._Element,
+    audio_shape_ids: list[int],
+    *,
+    main_seq_dur_ms: int = 0,
 ) -> None:
     """既存のp:timing構造に音声auto-playノードを追加する。
 
     mainSeqのchildTnLstに音声用p:parを追加する。
     既存のアニメーションはそのまま保持される。
+
+    Args:
+        timing_elem: 既存の p:timing 要素
+        audio_shape_ids: 音声シェイプのIDリスト
+        main_seq_dur_ms: 0の場合は "indefinite" のまま変更しない。
+            正の値の場合は mainSeq の dur をその値（ms）に更新する。
     """
     # mainSeq (nodeType="mainSeq") を探す
     main_seq_ctn = timing_elem.find(
@@ -250,6 +273,10 @@ def _merge_audio_into_timing(
     )
     if main_seq_ctn is None:
         return
+
+    # LibreOffice互換: mainSeq の dur を音声長に更新する
+    if main_seq_dur_ms > 0:
+        main_seq_ctn.set("dur", str(main_seq_dur_ms))
 
     child_tn_lst = main_seq_ctn.find(f"{{{_P_NS}}}childTnLst")
     if child_tn_lst is None:
@@ -325,8 +352,19 @@ def _build_audio_par_xml(
     return etree.fromstring(xml)
 
 
-def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
-    """音声auto-play用の完全なp:timing要素を構築する。"""
+def _build_timing_xml(
+    audio_shape_ids: list[int],
+    *,
+    main_seq_dur_ms: int = 0,
+) -> etree._Element:
+    """音声auto-play用の完全なp:timing要素を構築する。
+
+    Args:
+        audio_shape_ids: 音声シェイプのIDリスト
+        main_seq_dur_ms: mainSeq の dur 属性値（ミリ秒）。
+            0 の場合は "indefinite"。正の値の場合はその値を使用する。
+            LibreOffice互換性のため音声長を渡すと自動送りが正しく動作する。
+    """
     audio_pars = ""
     ctn_id = 3
     for shape_id in audio_shape_ids:
@@ -363,13 +401,15 @@ def _build_timing_xml(audio_shape_ids: list[int]) -> etree._Element:
                 </p:par>"""
         ctn_id += 3
 
+    main_seq_dur = str(main_seq_dur_ms) if main_seq_dur_ms > 0 else "indefinite"
+
     timing_xml = f"""<p:timing xmlns:p="{_P_NS}">
   <p:tnLst>
     <p:par>
       <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
         <p:childTnLst>
           <p:seq concurrent="1" nextAc="seek">
-            <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+            <p:cTn id="2" dur="{main_seq_dur}" nodeType="mainSeq">
               <p:childTnLst>{audio_pars}
               </p:childTnLst>
             </p:cTn>

@@ -650,3 +650,61 @@ class Testノートベースタイミング:
             assert not has_notes_after, (
                 "ノートなしスライドに空のnotesが勝手に作られてはいけない"
             )
+
+
+class TestLibreOffice互換mainSeqDur:
+    """LibreOffice互換: mainSeq の dur が音声長に設定される"""
+
+    def test_音声ありスライドのmainSeq_durが音声長になる(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """mainSeq p:cTn の dur が "indefinite" でなく音声長(ms)であること"""
+        output = tmp_output_dir / "show_lo.pptx"
+        configure_slideshow(pptx_with_audio, output)
+
+        prs = Presentation(str(output))
+        # スライド1 (音声あり: slide_001.mp3 → index 1)
+        slide = prs.slides[1]
+        main_seq_ctn = slide.element.find(
+            ".//p:cTn[@nodeType='mainSeq']", _ns
+        )
+        assert main_seq_ctn is not None, "mainSeq p:cTn が存在すること"
+        dur = main_seq_ctn.get("dur")
+        assert dur != "indefinite", (
+            f"LibreOffice互換のため dur は 'indefinite' であってはならない: {dur}"
+        )
+        assert dur is not None and int(dur) > 0, (
+            f"dur は正の整数(ms)であること: {dur}"
+        )
+
+    def test_音声なしスライドにはmainSeq_durが設定されない(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """音声なしスライドには p:timing が追加されないこと"""
+        output = tmp_output_dir / "show_lo_no_audio.pptx"
+        configure_slideshow(pptx_with_audio, output)
+
+        prs = Presentation(str(output))
+        # スライド0 (音声なし: title_slide に mp3 なし)
+        slide = prs.slides[0]
+        timing = slide.element.find("p:timing", _ns)
+        assert timing is None, "音声なしスライドに p:timing は不要"
+
+    def test_mainSeq_durがadvTmと同等以下である(
+        self, pptx_with_audio: Path, tmp_output_dir: Path
+    ):
+        """mainSeq dur <= advTm であること（音声が終わった後にページ送り）"""
+        output = tmp_output_dir / "show_lo_dur.pptx"
+        configure_slideshow(pptx_with_audio, output, audio_buffer_ms=1000)
+
+        prs = Presentation(str(output))
+        # スライド1 (音声あり)
+        slide = prs.slides[1]
+        trans = slide.element.find("p:transition", _ns)
+        main_seq_ctn = slide.element.find(".//p:cTn[@nodeType='mainSeq']", _ns)
+
+        adv_tm = int(trans.get("advTm"))
+        dur = int(main_seq_ctn.get("dur"))
+        assert dur <= adv_tm, (
+            f"mainSeq dur({dur}ms) は advTm({adv_tm}ms) 以下であるべき"
+        )

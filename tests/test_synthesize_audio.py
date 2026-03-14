@@ -194,3 +194,74 @@ class Testエラーハンドリング:
             await synthesize_notes(
                 ["テスト"], tmp_output_dir / "audio"
             )
+
+
+class TestA4_TTS障害時フォールバック:
+    """A4: TTS APIが一部スライドで失敗しても、成功分は保持される"""
+
+    @pytest.fixture
+    def failing_engine(self):
+        """2番目のスライドで例外を投げるモックエンジン"""
+        engine = AsyncMock()
+        call_count = 0
+
+        async def partial_fail(text, output_path, voice=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise ConnectionError("VOICEVOX connection refused")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 50)
+            return output_path
+
+        engine.synthesize.side_effect = partial_fail
+        return engine
+
+    @pytest.mark.asyncio
+    async def test_一部スライドが失敗しても残りは生成される(
+        self, tmp_output_dir: Path, failing_engine
+    ):
+        notes = ["スライド1", "スライド2", "スライド3"]
+        audio_dir = tmp_output_dir / "audio"
+
+        results = await synthesize_notes(
+            notes, audio_dir, engine=failing_engine
+        )
+
+        assert results[0] is not None  # 成功
+        assert results[1] is None      # 失敗→スキップ
+        assert results[2] is not None  # 成功
+
+    @pytest.mark.asyncio
+    async def test_全スライド失敗でもクラッシュしない(
+        self, tmp_output_dir: Path
+    ):
+        engine = AsyncMock()
+        engine.synthesize.side_effect = ConnectionError("VOICEVOX down")
+
+        notes = ["スライド1", "スライド2"]
+        audio_dir = tmp_output_dir / "audio"
+
+        results = await synthesize_notes(
+            notes, audio_dir, engine=engine
+        )
+
+        assert all(r is None for r in results)
+
+    @pytest.mark.asyncio
+    async def test_失敗したスライドの情報がwarningsに含まれる(
+        self, tmp_output_dir: Path, failing_engine
+    ):
+        import warnings
+
+        notes = ["スライド1", "スライド2", "スライド3"]
+        audio_dir = tmp_output_dir / "audio"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            await synthesize_notes(
+                notes, audio_dir, engine=failing_engine
+            )
+
+            tts_warnings = [x for x in w if "TTS" in str(x.message) or "slide" in str(x.message).lower()]
+            assert len(tts_warnings) >= 1

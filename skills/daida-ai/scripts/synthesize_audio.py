@@ -39,7 +39,14 @@ def main():
         )
     )
     generated = sum(1 for r in results if r is not None)
+    failed = non_empty - generated
     print(f"Generated {generated} audio files.")
+    if failed > 0:
+        print(
+            f"Warning: {failed} slide(s) failed TTS synthesis. "
+            f"Re-run Step 4 after resolving the TTS issue.",
+            file=sys.stderr,
+        )
     print("Done.")
 
 

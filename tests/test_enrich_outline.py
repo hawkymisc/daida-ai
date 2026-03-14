@@ -150,18 +150,18 @@ class TestValidateSlideSpec:
                 {"metadata": {"title": "T", "subtitle": "S", "event": "E"}}
             )
 
-    def test_slidesが空リストでも有効(self):
-        spec = validate_slide_spec(
-            {
-                "metadata": {
-                    "title": "T",
-                    "subtitle": "S",
-                    "event": "E",
-                },
-                "slides": [],
-            }
-        )
-        assert len(spec.slides) == 0
+    def test_slidesが空リストはValueError(self):
+        with pytest.raises(ValueError, match="slide"):
+            validate_slide_spec(
+                {
+                    "metadata": {
+                        "title": "T",
+                        "subtitle": "S",
+                        "event": "E",
+                    },
+                    "slides": [],
+                }
+            )
 
     def test_metadata_titleが欠損するとValueError(self):
         with pytest.raises(ValueError, match="title"):
@@ -227,3 +227,326 @@ class TestSaveLoadSlideSpec:
         path.write_text("{invalid json", encoding="utf-8")
         with pytest.raises(ValueError):
             load_slide_spec(path)
+
+
+def _make_spec_dict(slides: list[dict], **meta_overrides) -> dict:
+    """テスト用のspec辞書を組み立てるヘルパー"""
+    meta = {"title": "T", "subtitle": "S", "event": "E"}
+    meta.update(meta_overrides)
+    return {"metadata": meta, "slides": slides}
+
+
+class TestA1ガードレール_タイトル非空:
+    """A1: すべてのスライドにtitleが非空であること"""
+
+    def test_空タイトルのスライドはValueError(self):
+        with pytest.raises(ValueError, match="title"):
+            validate_slide_spec(
+                _make_spec_dict([{"layout": "title_and_content", "title": ""}])
+            )
+
+    def test_titleキー省略時もValueError(self):
+        with pytest.raises(ValueError, match="title"):
+            validate_slide_spec(
+                _make_spec_dict([{"layout": "title_and_content"}])
+            )
+
+    def test_空白のみのタイトルはValueError(self):
+        with pytest.raises(ValueError, match="title"):
+            validate_slide_spec(
+                _make_spec_dict([{"layout": "title_and_content", "title": "   "}])
+            )
+
+    def test_非空タイトルは通る(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_slide", "title": "表紙", "note": "テスト"},
+            ])
+        )
+        assert spec.slides[0].title == "表紙"
+
+    def test_blankレイアウトはタイトル空でも有効(self):
+        """blankはフルスクリーン画像用でタイトル不要"""
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "blank", "note": "テスト"},
+            ])
+        )
+        assert spec.slides[0].title == ""
+
+
+class TestA1ガードレール_スライド枚数:
+    """A1: 1 ≤ len(slides) ≤ max_slides（登壇形式に応じて変動）"""
+
+    def test_スライド0枚はValueError(self):
+        with pytest.raises(ValueError, match="slide"):
+            validate_slide_spec(_make_spec_dict([]))
+
+    def test_スライド1枚は有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_slide", "title": "表紙", "note": "テスト"},
+            ])
+        )
+        assert len(spec.slides) == 1
+
+    @pytest.mark.parametrize(
+        "max_slides, label",
+        [
+            (20, "5分LT"),
+            (40, "15分LT"),
+            (60, "30分講演"),
+        ],
+    )
+    def test_上限ちょうどの枚数は有効(self, max_slides, label):
+        slides = [
+            {"layout": "title_and_content", "title": f"S{i}", "body": ["x"], "note": "テスト"}
+            for i in range(max_slides)
+        ]
+        spec = validate_slide_spec(
+            _make_spec_dict(slides), max_slides=max_slides
+        )
+        assert len(spec.slides) == max_slides
+
+    @pytest.mark.parametrize(
+        "max_slides, label",
+        [
+            (20, "5分LT"),
+            (40, "15分LT"),
+            (60, "30分講演"),
+        ],
+    )
+    def test_上限超過はValueError(self, max_slides, label):
+        slides = [
+            {"layout": "title_and_content", "title": f"S{i}", "body": ["x"], "note": "テスト"}
+            for i in range(max_slides + 1)
+        ]
+        with pytest.raises(ValueError, match="slide"):
+            validate_slide_spec(
+                _make_spec_dict(slides), max_slides=max_slides
+            )
+
+    def test_デフォルトは20枚上限(self):
+        """max_slides未指定時はMAX_SLIDES=20がデフォルト"""
+        slides = [
+            {"layout": "title_and_content", "title": f"S{i}", "body": ["x"], "note": "テスト"}
+            for i in range(21)
+        ]
+        with pytest.raises(ValueError, match="20"):
+            validate_slide_spec(_make_spec_dict(slides))
+
+
+class TestA1ガードレール_ノート必須:
+    """A1: title_slide, section_header以外のスライドにはnoteが必須"""
+
+    def test_コンテンツスライドにnoteなしはValueError(self):
+        with pytest.raises(ValueError, match="note"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {"layout": "title_slide", "title": "表紙"},
+                    {"layout": "title_and_content", "title": "T", "body": ["x"]},
+                ])
+            )
+
+    def test_コンテンツスライドにnote空文字はValueError(self):
+        with pytest.raises(ValueError, match="note"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {"layout": "title_slide", "title": "表紙"},
+                    {"layout": "title_and_content", "title": "T", "body": ["x"], "note": ""},
+                ])
+            )
+
+    def test_title_slideはnoteなしでも有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_slide", "title": "表紙"},
+            ])
+        )
+        assert spec.slides[0].note is None
+
+    def test_section_headerはnoteなしでも有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "section_header", "title": "セクション"},
+            ])
+        )
+        assert spec.slides[0].note is None
+
+
+class TestA1ガードレール_情報密度:
+    """A1: コンテンツスライドの箇条書き数が1〜8の範囲内"""
+
+    def test_bodyが0項目のコンテンツスライドはValueError(self):
+        with pytest.raises(ValueError, match="body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {"layout": "title_and_content", "title": "T", "body": [], "note": "テスト"},
+                ])
+            )
+
+    def test_bodyが9項目のコンテンツスライドはValueError(self):
+        with pytest.raises(ValueError, match="body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {
+                        "layout": "title_and_content",
+                        "title": "T",
+                        "body": [f"item{i}" for i in range(9)],
+                        "note": "テスト",
+                    },
+                ])
+            )
+
+    def test_bodyが1項目は有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_and_content", "title": "T", "body": ["x"], "note": "テスト"},
+            ])
+        )
+        assert len(spec.slides[0].body) == 1
+
+    def test_bodyが8項目は有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {
+                    "layout": "title_and_content",
+                    "title": "T",
+                    "body": [f"item{i}" for i in range(8)],
+                    "note": "テスト",
+                },
+            ])
+        )
+        assert len(spec.slides[0].body) == 8
+
+    def test_title_slideはbodyチェック対象外(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_slide", "title": "表紙"},
+            ])
+        )
+        assert spec.slides[0].body is None
+
+    def test_bodyがNoneのコンテンツスライドは有効(self):
+        """title_onlyなどbodyがないレイアウトは許容"""
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_only", "title": "図", "note": "テスト"},
+            ])
+        )
+        assert spec.slides[0].body is None
+
+    def test_two_contentのleft_bodyが9項目はValueError(self):
+        with pytest.raises(ValueError, match="left.body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {
+                        "layout": "two_content",
+                        "title": "比較",
+                        "left": {"heading": "左", "body": [f"item{i}" for i in range(9)]},
+                        "right": {"heading": "右", "body": ["a"]},
+                        "note": "テスト",
+                    },
+                ])
+            )
+
+    def test_two_contentのright_bodyが9項目はValueError(self):
+        with pytest.raises(ValueError, match="right.body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {
+                        "layout": "two_content",
+                        "title": "比較",
+                        "left": {"heading": "左", "body": ["a"]},
+                        "right": {"heading": "右", "body": [f"item{i}" for i in range(9)]},
+                        "note": "テスト",
+                    },
+                ])
+            )
+
+    def test_two_contentの各カラム8項目は有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {
+                    "layout": "two_content",
+                    "title": "比較",
+                    "left": {"heading": "左", "body": [f"L{i}" for i in range(8)]},
+                    "right": {"heading": "右", "body": [f"R{i}" for i in range(8)]},
+                    "note": "テスト",
+                },
+            ])
+        )
+        assert len(spec.slides[0].left.body) == 8
+
+
+class TestA1ガードレール_推定発話時間:
+    """A1: 全ノートの合計文字数 / 5.0 ≤ max_talk_duration_sec"""
+
+    @pytest.mark.parametrize(
+        "max_sec, label",
+        [
+            (300, "5分LT"),
+            (900, "15分LT"),
+            (1800, "30分講演"),
+        ],
+    )
+    def test_上限ちょうどの文字数は有効(self, max_sec, label):
+        """max_sec秒 × 5文字/秒 = ちょうど上限"""
+        char_count = int(max_sec * 5.0)
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_and_content", "title": "T", "body": ["x"], "note": "あ" * char_count},
+            ]),
+            max_slides=100,
+            max_talk_duration_sec=max_sec,
+        )
+        assert len(spec.slides) == 1
+
+    @pytest.mark.parametrize(
+        "max_sec, label",
+        [
+            (300, "5分LT"),
+            (900, "15分LT"),
+            (1800, "30分講演"),
+        ],
+    )
+    def test_上限超過はValueError(self, max_sec, label):
+        """max_sec秒を1文字分超過"""
+        char_count = int(max_sec * 5.0) + 1
+        with pytest.raises(ValueError, match="duration"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {"layout": "title_and_content", "title": "T", "body": ["x"], "note": "あ" * char_count},
+                ]),
+                max_slides=100,
+                max_talk_duration_sec=max_sec,
+            )
+
+    def test_デフォルトは300秒上限(self):
+        """max_talk_duration_sec未指定時は300秒がデフォルト"""
+        note = "あ" * 1501  # 1501 / 5.0 = 300.2秒
+        with pytest.raises(ValueError, match="300"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {"layout": "title_and_content", "title": "T", "body": ["x"], "note": note},
+                ])
+            )
+
+    def test_複数スライドのノート合計で判定(self):
+        """各スライド750文字 × 2 = 1500文字 = 300秒ちょうど"""
+        slides = [
+            {"layout": "title_and_content", "title": f"S{i}", "body": ["x"], "note": "あ" * 750}
+            for i in range(2)
+        ]
+        spec = validate_slide_spec(_make_spec_dict(slides))
+        assert len(spec.slides) == 2
+
+    def test_ノートなしスライドは発話時間0として計算(self):
+        """title_slideのノートなしは0文字として計算される"""
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {"layout": "title_slide", "title": "表紙"},
+                {"layout": "title_and_content", "title": "T", "body": ["x"], "note": "あ" * 100},
+            ])
+        )
+        assert len(spec.slides) == 2

@@ -6,6 +6,15 @@ import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+MAX_SLIDES = 20
+MIN_SLIDES = 1
+MAX_BODY_ITEMS = 8
+MIN_BODY_ITEMS = 1
+MAX_TALK_DURATION_SEC = 300
+CHARS_PER_SECOND = 5.0
+NOTE_EXEMPT_LAYOUTS = {"title_slide", "section_header"}
+TITLE_EXEMPT_LAYOUTS = {"blank"}
+
 VALID_TEMPLATES = {"tech", "casual", "formal"}
 VALID_LAYOUTS = {
     "title_slide",
@@ -96,8 +105,18 @@ def _parse_slide(data: dict) -> Slide:
     )
 
 
-def validate_slide_spec(data: dict) -> SlideSpec:
+def validate_slide_spec(
+    data: dict,
+    *,
+    max_slides: int = MAX_SLIDES,
+    max_talk_duration_sec: float = MAX_TALK_DURATION_SEC,
+) -> SlideSpec:
     """辞書をバリデーションしてSlideSpecに変換する。
+
+    Args:
+        data: スライド仕様の辞書
+        max_slides: スライド枚数の上限（登壇形式に応じて変更）
+        max_talk_duration_sec: 推定発話時間の上限（秒）
 
     Raises:
         ValueError: 必須フィールド欠損や無効な値
@@ -118,6 +137,66 @@ def validate_slide_spec(data: dict) -> SlideSpec:
     )
 
     slides = [_parse_slide(s) for s in data["slides"]]
+
+    # --- A1 ガードレール ---
+    # スライド枚数チェック
+    if len(slides) < MIN_SLIDES:
+        raise ValueError(
+            f"slides must have at least {MIN_SLIDES} slide, got {len(slides)}"
+        )
+    if len(slides) > max_slides:
+        raise ValueError(
+            f"slides must have at most {max_slides} slides, got {len(slides)}"
+        )
+
+    # 各スライドのバリデーション
+    for i, slide in enumerate(slides):
+        # タイトル非空チェック（blankレイアウトは免除）
+        if slide.layout not in TITLE_EXEMPT_LAYOUTS:
+            if not slide.title or not slide.title.strip():
+                raise ValueError(
+                    f"slide[{i}] requires a non-empty title"
+                )
+
+        # ノート必須チェック（title_slide, section_header以外）
+        if slide.layout not in NOTE_EXEMPT_LAYOUTS:
+            if not slide.note or not slide.note.strip():
+                raise ValueError(
+                    f"slide[{i}] (layout={slide.layout}) requires a non-empty note"
+                )
+
+        # 情報密度チェック（bodyがある場合のみ）
+        if slide.body is not None:
+            if len(slide.body) < MIN_BODY_ITEMS:
+                raise ValueError(
+                    f"slide[{i}] body must have at least {MIN_BODY_ITEMS} item, "
+                    f"got {len(slide.body)}"
+                )
+            if len(slide.body) > MAX_BODY_ITEMS:
+                raise ValueError(
+                    f"slide[{i}] body must have at most {MAX_BODY_ITEMS} items, "
+                    f"got {len(slide.body)}"
+                )
+
+        # 2カラムレイアウトのbody検証
+        for col_name, col in [("left", slide.left), ("right", slide.right)]:
+            if col is not None and col.body:
+                if len(col.body) > MAX_BODY_ITEMS:
+                    raise ValueError(
+                        f"slide[{i}] {col_name}.body must have at most "
+                        f"{MAX_BODY_ITEMS} items, got {len(col.body)}"
+                    )
+
+    # 推定発話時間チェック
+    total_chars = sum(
+        len(s.note.strip()) for s in slides if s.note
+    )
+    estimated_duration_sec = total_chars / CHARS_PER_SECOND
+    if estimated_duration_sec > max_talk_duration_sec:
+        raise ValueError(
+            f"estimated talk duration {estimated_duration_sec:.1f}s exceeds "
+            f"maximum {max_talk_duration_sec}s"
+        )
 
     return SlideSpec(metadata=metadata, slides=slides)
 

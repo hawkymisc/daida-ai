@@ -464,7 +464,8 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh embed_audio.py output/presentation.pptx 
 ## Step 6: スライドショー自動再生設定
 
 音声埋め込み済みPPTXに、自動ページ送りと音声自動再生を設定する。
-これにより、スライドショーを開始するだけで最後まで完全自動で再生される。
+PowerPoint（Windows / macOS）では、スライドショーを開始するだけで最後まで完全自動で再生される。
+LibreOffice Impress では自動ページ送りが動作しないため、手動でスライドを送る必要がある（詳細は「クロスプラットフォーム互換性ノート」を参照）。
 
 - 音声付きスライド: 音声再生完了 + バッファ（デフォルト1秒）で自動ページ送り
 - 音声なしスライド（表紙・中表紙等）: 固定時間（デフォルト3秒）で自動ページ送り
@@ -486,12 +487,16 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_wi
 
 > **スライドショー再生前の確認事項**
 >
-> PowerPoint の「スライドショーの設定」で **「タイミングを使用」にチェック** が入っていることを確認してください。
+> **PowerPoint（Windows / macOS）の場合:**
+> 「スライドショーの設定」で **「タイミングを使用」にチェック** が入っていることを確認してください。
 >
 > - **Windows**: 「スライドショー」タブ →「スライドショーの設定」→「タイミングを使用」にチェック
 > - **macOS**: 「スライドショー」メニュー →「スライドショーの設定...」→「オプション」→「タイミングを使用」にチェック
 >
 > このチェックが外れていると、自動ページ送りと音声自動再生が動作しません。
+>
+> **LibreOffice Impress の場合:**
+> 自動ページ送りは動作しません。スライドショー中は**手動でスライドを送ってください**（クリックまたは矢印キー）。音声は各スライドで自動再生されます。
 
 ---
 
@@ -539,10 +544,11 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh convert_format.py output/presentation.pp
 
 | 方式 | macOS | Windows | LibreOffice |
 |------|-------|---------|-------------|
-| `p:transition advTm` | ✅ | ✅ | ⚠️ mainSeq.dur 必要 |
+| `p:transition advTm` | ✅ | ✅ | ❌ 非対応 |
 
-- LibreOffice Impress では `mainSeq.dur` を音声長に設定しないと `advTm` が発火しない
-- `make_slideshow.py` は自動で `mainSeq.dur` を設定するため、手動対応は不要
+- **LibreOffice Impress では自動ページ送りが動作しない**。PPTX内のタイミング設定（`advTm`、`mainSeq.dur`）を正しく設定してもLibreOffice側で無視される既知の制限がある（[Bug 101527](https://bugs.documentfoundation.org/show_bug.cgi?id=101527)）
+- LibreOffice で再生する場合は**手動でスライドを送る**か、LibreOffice上で「スライド切り替え」パネルから各スライドの「自動切り替え」時間を手動設定する必要がある
+- **PowerPoint（Windows / macOS）では自動ページ送りが正常に動作する**
 
 ---
 

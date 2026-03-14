@@ -1,5 +1,6 @@
 """TDD: slide_builder.py — スライド仕様JSON → PPTX生成テスト"""
 
+import zipfile
 import pytest
 from pathlib import Path
 from pptx import Presentation
@@ -140,6 +141,15 @@ class TestBuildPresentation:
         assert path.exists()
         assert path.stat().st_size > 0
 
+    def test_保存したPPTXは有効なZIPファイルである(
+        self, simple_spec: SlideSpec, tmp_output_dir: Path
+    ):
+        """A2: PPTXはOPC（ZIP）形式であること"""
+        prs = build_presentation(simple_spec)
+        path = tmp_output_dir / "test.pptx"
+        prs.save(str(path))
+        assert zipfile.is_zipfile(str(path))
+
     def test_保存したPPTXを再度開ける(
         self, simple_spec: SlideSpec, tmp_output_dir: Path
     ):
@@ -207,6 +217,60 @@ class TestBuildPresentationEdgeCases:
         )
         prs = build_presentation(spec)
         assert len(prs.slides) == 1
+
+
+class TestA3下流パイプラインエッジケース:
+    """A3: 特殊文字がSlideSpec→PPTX生成を通過できることを検証"""
+
+    @pytest.mark.parametrize(
+        "title, label",
+        [
+            ("🚀 ロケットの話", "絵文字"),
+            ("مرحبا بالعالم", "RTL文字"),
+            ("<script>alert('xss')</script>", "HTMLタグ"),
+            ("cafe\u0301", "Unicode NFD"),
+            ("テスト\x00タイトル", "NULL文字"),
+            ("テスト\u200bタイトル", "ゼロ幅スペース"),
+        ],
+    )
+    def test_特殊文字タイトルでPPTX生成がクラッシュしない(
+        self, title, label, tmp_output_dir: Path
+    ):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_and_content", title=title, body=["項目"], note="テスト"),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "edge.pptx"
+        prs.save(str(path))
+        assert path.exists()
+
+    @pytest.mark.parametrize(
+        "note, label",
+        [
+            ("🎉 素晴らしい発表です", "絵文字"),
+            ("مرحبا بالعالم", "RTL文字"),
+            ("<b>太字</b>の説明", "HTMLタグ"),
+            ("テスト\x00ノート", "NULL文字"),
+        ],
+    )
+    def test_特殊文字ノートでPPTX生成がクラッシュしない(
+        self, note, label, tmp_output_dir: Path
+    ):
+        spec = SlideSpec(
+            metadata=SlideMetadata(title="T", subtitle="S", event="E"),
+            slides=[
+                Slide(layout="title_and_content", title="T", body=["項目"], note=note),
+            ],
+        )
+        prs = build_presentation(spec)
+        path = tmp_output_dir / "edge_note.pptx"
+        prs.save(str(path))
+        # ノートが保存されることを確認（NULL文字はXML仕様によりエスケープされる）
+        saved_note = prs.slides[0].notes_slide.notes_text_frame.text
+        assert len(saved_note) > 0
 
 
 def _find_pictures(slide):

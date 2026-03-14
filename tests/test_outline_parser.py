@@ -121,6 +121,79 @@ class TestParseOutline:
         assert outline.sections[1].items == ["項目"]
 
 
+class TestA3エッジケース耐性:
+    """A3: 異常な入力に対してparse_outlineがクラッシュしない"""
+
+    def test_絵文字のみの入力(self):
+        """絵文字のみでもクラッシュしない（H1がないのでValueError）"""
+        with pytest.raises(ValueError):
+            parse_outline("🎉🚀💡")
+
+    def test_絵文字を含むタイトル(self):
+        """絵文字入りのタイトルが正常にパースされる"""
+        md = "# 🚀 ロケットの話\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert "🚀" in outline.title
+
+    def test_HTMLタグ入力(self):
+        """HTMLタグはそのまま文字列として扱われる"""
+        md = "# <script>alert('xss')</script>\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert "<script>" in outline.title
+
+    def test_HTMLタグのみの入力(self):
+        """H1がないのでValueError"""
+        with pytest.raises(ValueError):
+            parse_outline("<script>alert('xss')</script>")
+
+    def test_ゼロ幅スペースのみの入力(self):
+        """ゼロ幅スペースのみ。strip()で消えないので空判定を通るが、H1がない"""
+        with pytest.raises(ValueError):
+            parse_outline("\u200b\u200b\u200b")
+
+    def test_ゼロ幅スペースを含むタイトル(self):
+        """ゼロ幅スペース入りのタイトルが正常にパースされる"""
+        md = "# テスト\u200bタイトル\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert "テスト" in outline.title
+
+    def test_RTL文字の入力(self):
+        """アラビア語テキストでもクラッシュしない"""
+        md = "# مرحبا بالعالم\n## قسم\n- عنصر\n"
+        outline = parse_outline(md)
+        assert outline.title == "مرحبا بالعالم"
+
+    def test_NULL文字を含む入力(self):
+        """NULL文字入りでもクラッシュしない"""
+        md = "# テーマ\x00含む\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert "テーマ" in outline.title
+
+    def test_Unicode正規化NFD形式(self):
+        """NFD形式のé(e + ◌́)でもクラッシュしない"""
+        md = "# cafe\u0301\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert outline.title == "cafe\u0301"
+
+    def test_SQLインジェクション風の入力(self):
+        """SQL文がそのまま文字列として扱われる"""
+        md = "# SELECT * FROM users;\n## セクション\n- 項目\n"
+        outline = parse_outline(md)
+        assert outline.title == "SELECT * FROM users;"
+
+    def test_極端に長い入力10000文字(self):
+        """10000文字のタイトルでもクラッシュしない"""
+        long_title = "A" * 10000
+        md = f"# {long_title}\n"
+        outline = parse_outline(md)
+        assert outline.title == long_title
+
+    def test_前後スペースのみの入力(self):
+        """空白のみはstrip()後に空になるのでValueError"""
+        with pytest.raises(ValueError, match="空"):
+            parse_outline("   \t\n   ")
+
+
 class TestOutlineSection:
     """OutlineSectionのデータ構造テスト"""
 

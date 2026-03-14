@@ -16,6 +16,7 @@ from daida_ai.lib.slide_builder import build_presentation
 from daida_ai.lib.talk_script import read_notes, write_notes
 from daida_ai.lib.audio_embed import embed_audio_to_pptx
 from daida_ai.lib.slideshow import configure_slideshow
+from tests.conftest import DUMMY_MP3_BYTES, DUMMY_MP3_BYTES_SHORT
 
 
 # ── Step 1 相当: Markdownアウトライン ──
@@ -205,9 +206,7 @@ class TestE2EPipeline:
         audio_dir = tmp_output_dir / "audio"
         audio_dir.mkdir()
         for i in [2, 3, 4, 5]:
-            (audio_dir / f"slide_{i:03d}.mp3").write_bytes(
-                b"\xff\xfb\x90\x00" + b"\x00" * 100
-            )
+            (audio_dir / f"slide_{i:03d}.mp3").write_bytes(DUMMY_MP3_BYTES)
 
         # 埋め込み
         output = tmp_output_dir / "final.pptx"
@@ -247,9 +246,7 @@ class TestE2EPipeline:
         audio_dir.mkdir()
         for i in range(6):
             if updated_notes[i]:
-                (audio_dir / f"slide_{i:03d}.mp3").write_bytes(
-                    b"\xff\xfb\x90\x00" + b"\x00" * 50
-                )
+                (audio_dir / f"slide_{i:03d}.mp3").write_bytes(DUMMY_MP3_BYTES_SHORT)
 
         final_path = tmp_output_dir / "final_presentation.pptx"
         count = embed_audio_to_pptx(pptx_path, audio_dir, final_path)

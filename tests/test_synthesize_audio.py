@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from daida_ai.lib.synthesize import synthesize_notes
+from tests.conftest import DUMMY_MP3_BYTES_SHORT
 
 
 @pytest.fixture
@@ -18,7 +19,7 @@ def mock_engine():
 
     async def fake_synthesize(text, output_path, voice=None):
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 50)
+        output_path.write_bytes(DUMMY_MP3_BYTES_SHORT)
         return output_path
 
     engine.synthesize.side_effect = fake_synthesize
@@ -211,7 +212,7 @@ class TestA4_TTS障害時フォールバック:
             if call_count == 2:
                 raise ConnectionError("VOICEVOX connection refused")
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 50)
+            output_path.write_bytes(DUMMY_MP3_BYTES_SHORT)
             return output_path
 
         engine.synthesize.side_effect = partial_fail

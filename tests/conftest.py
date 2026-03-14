@@ -60,6 +60,18 @@ def build_id3_header(tag_size: int = 0) -> bytes:
     return b"ID3" + bytes([0x03, 0x00, 0x00]) + size_bytes + b"\x00" * tag_size
 
 
+# MPEG1 Layer3 128kbps のダミーMP3バイト列（テスト全体で共有）
+# 0xFF 0xFB = sync + MPEG1/Layer3, 0x90 = bitrate_idx=0b1001(128kbps), 0x00 = padding
+DUMMY_MP3_BYTES = build_mp3_frame(mpeg1=True, bitrate_idx=0b1001, audio_size=100)
+DUMMY_MP3_BYTES_SHORT = build_mp3_frame(mpeg1=True, bitrate_idx=0b1001, audio_size=50)
+
+
+@pytest.fixture
+def dummy_mp3() -> bytes:
+    """テスト用ダミーMP3バイト列（MPEG1 128kbps, 104bytes）"""
+    return DUMMY_MP3_BYTES
+
+
 @pytest.fixture
 def sample_outline_md() -> str:
     """基本的なLTアウトラインのMarkdown"""

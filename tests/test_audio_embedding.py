@@ -9,6 +9,7 @@ from pptx.opc.package import RT
 from daida_ai.lib.slide_spec import SlideSpec, SlideMetadata, Slide
 from daida_ai.lib.slide_builder import build_presentation
 from daida_ai.lib.audio_embed import embed_audio_to_pptx
+from tests.conftest import DUMMY_MP3_BYTES
 
 
 @pytest.fixture
@@ -34,7 +35,7 @@ def audio_dir(tmp_output_dir: Path) -> Path:
     d = tmp_output_dir / "audio"
     d.mkdir()
     for i in [0, 2]:
-        (d / f"slide_{i:03d}.mp3").write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 100)
+        (d / f"slide_{i:03d}.mp3").write_bytes(DUMMY_MP3_BYTES)
     return d
 
 

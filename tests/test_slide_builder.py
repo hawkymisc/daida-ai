@@ -229,7 +229,7 @@ class TestSlideSpecImage:
         data = {
             "metadata": {"title": "T", "subtitle": "S", "event": "E"},
             "slides": [
-                {"layout": "title_only", "title": "図", "image": "fig.png"},
+                {"layout": "title_only", "title": "図", "image": "fig.png", "note": "テスト"},
             ],
         }
         spec = validate_slide_spec(data)
@@ -239,7 +239,7 @@ class TestSlideSpecImage:
         data = {
             "metadata": {"title": "T", "subtitle": "S", "event": "E"},
             "slides": [
-                {"layout": "title_only", "title": "図"},
+                {"layout": "title_only", "title": "図", "note": "テスト"},
             ],
         }
         spec = validate_slide_spec(data)

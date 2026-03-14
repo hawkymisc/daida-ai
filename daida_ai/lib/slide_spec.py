@@ -178,6 +178,15 @@ def validate_slide_spec(
                     f"got {len(slide.body)}"
                 )
 
+        # 2カラムレイアウトのbody検証
+        for col_name, col in [("left", slide.left), ("right", slide.right)]:
+            if col is not None and col.body:
+                if len(col.body) > MAX_BODY_ITEMS:
+                    raise ValueError(
+                        f"slide[{i}] {col_name}.body must have at most "
+                        f"{MAX_BODY_ITEMS} items, got {len(col.body)}"
+                    )
+
     # 推定発話時間チェック
     total_chars = sum(
         len(s.note.strip()) for s in slides if s.note

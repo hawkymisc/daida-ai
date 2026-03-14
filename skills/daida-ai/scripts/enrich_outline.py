@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from daida_ai.lib.slide_spec import validate_slide_spec, save_slide_spec
 
 # 持ち時間 → バリデーションパラメータの目安
-# 1スライドあたり30秒〜1分を想定
-_SLIDES_PER_MINUTE = 2  # 1分あたり最大2枚
+# 1スライドあたり15秒〜30秒を想定（表紙・セクション含む）
+_SLIDES_PER_MINUTE = 4  # 1分あたり最大4枚
 
 
 def _duration_to_limits(duration_min: int) -> dict:

@@ -436,6 +436,48 @@ class TestA1ガードレール_情報密度:
         )
         assert spec.slides[0].body is None
 
+    def test_two_contentのleft_bodyが9項目はValueError(self):
+        with pytest.raises(ValueError, match="left.body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {
+                        "layout": "two_content",
+                        "title": "比較",
+                        "left": {"heading": "左", "body": [f"item{i}" for i in range(9)]},
+                        "right": {"heading": "右", "body": ["a"]},
+                        "note": "テスト",
+                    },
+                ])
+            )
+
+    def test_two_contentのright_bodyが9項目はValueError(self):
+        with pytest.raises(ValueError, match="right.body"):
+            validate_slide_spec(
+                _make_spec_dict([
+                    {
+                        "layout": "two_content",
+                        "title": "比較",
+                        "left": {"heading": "左", "body": ["a"]},
+                        "right": {"heading": "右", "body": [f"item{i}" for i in range(9)]},
+                        "note": "テスト",
+                    },
+                ])
+            )
+
+    def test_two_contentの各カラム8項目は有効(self):
+        spec = validate_slide_spec(
+            _make_spec_dict([
+                {
+                    "layout": "two_content",
+                    "title": "比較",
+                    "left": {"heading": "左", "body": [f"L{i}" for i in range(8)]},
+                    "right": {"heading": "右", "body": [f"R{i}" for i in range(8)]},
+                    "note": "テスト",
+                },
+            ])
+        )
+        assert len(spec.slides[0].left.body) == 8
+
 
 class TestA1ガードレール_推定発話時間:
     """A1: 全ノートの合計文字数 / 5.0 ≤ max_talk_duration_sec"""

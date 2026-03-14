@@ -138,13 +138,23 @@ EDGE_CASES = [
 | SVG変換 — 不正なSVG | `SVGConversionError`を送出 | `test_svg_to_png.py` |
 | パストラバーサル | `ValueError`を送出 | `test_slide_builder.py` |
 
+| TTS API障害（部分成功） | 失敗スライドをスキップし、成功分のみ返す。warningを発行 | `test_synthesize_audio.py` (TestA4_TTS障害時フォールバック) |
+| TTS API障害（全失敗） | 全スライドNoneを返し、クラッシュしない | `test_synthesize_audio.py` |
+
 ### 計画中（テスト未実装）
 
 | 障害箇所 | アサーション |
 |----------|-------------|
-| TTS API（VOICEVOX）障害 | 例外がハンドリングされ、音声なしPPTXが出力される（部分成功） |
-| LLM API障害 | 明確なエラーメッセージが返り、未処理例外が発生しない |
 | Skillワークフロー: Gemini障害→SVGフォールバック | SVGで代替画像を生成し、パイプライン完走する |
+
+> **TTS障害時の復旧フロー**: TTS失敗時は `synthesize_notes()` が失敗スライドをスキップし、成功分のみ返す（部分成功）。
+> `synthesize_audio.py` は失敗数をstderrに報告して正常終了する。
+> TTS復旧後にStep 4を再実行すれば全スライドの音声が生成される。
+
+> **LLM API障害について**: パイプライン全体がClaude Code上で実行され、
+> LLMとの対話はClaude Code自身が担当する（`daida_ai/lib/` も `scripts/` もLLM APIを直接呼ばない）。
+> LLM API障害時はClaude Code自体が動作不能になるため、ライブラリ側でのテストは不要・不可能。
+> LLMが生成する中間データの妥当性はA1（SlideSpec構造バリデーション）でガードされている。
 
 ## A5. タイミング推定式の精度検証
 

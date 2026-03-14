@@ -2,10 +2,12 @@
 
 スピーカーノートのリストからTTSエンジンで音声ファイルを生成する。
 空ノートはスキップし、slide_NNN.mp3 形式で出力する。
+個別スライドのTTS失敗はスキップし、成功分のみ返す（部分成功）。
 """
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from daida_ai.lib.tts_engine import TTSEngine, get_engine
@@ -48,7 +50,15 @@ async def synthesize_notes(
             results.append(None)
             continue
         output_path = output_dir / f"slide_{i:03d}.mp3"
-        await engine.synthesize(note, output_path, voice=voice)
-        results.append(output_path)
+        try:
+            await engine.synthesize(note, output_path, voice=voice)
+            results.append(output_path)
+        except Exception as e:
+            warnings.warn(
+                f"TTS failed for slide {i}: {e}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            results.append(None)
 
     return results

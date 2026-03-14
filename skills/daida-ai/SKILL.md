@@ -458,6 +458,15 @@ VOICEVOX使用時（事前にVOICEVOX Engineの起動が必要）:
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine voicevox
 ```
 
+### TTS障害時の対応
+
+TTS APIが一部または全スライドで失敗した場合、失敗したスライドはスキップされ、成功分のみ音声ファイルが生成される（部分成功）。
+
+- スクリプトは失敗数をstderrに報告し、正常終了する
+- 音声なしスライドはStep 6でデフォルト時間（3秒）で自動送りされる
+- TTS復旧後、Step 4を再実行すれば全スライドの音声が生成される
+- Step 2で生成したPPTXはそのまま利用可能（音声なしでも発表は可能）
+
 ---
 
 ## Step 5: 音声埋め込み

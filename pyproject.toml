@@ -1,6 +1,6 @@
 [project]
 name = "daida-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "LT presentation auto-generation Agent Skill"
 requires-python = ">=3.11"
 dependencies = [

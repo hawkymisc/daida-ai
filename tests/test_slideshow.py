@@ -9,6 +9,7 @@ from daida_ai.lib.slide_spec import SlideSpec, SlideMetadata, Slide
 from daida_ai.lib.slide_builder import build_presentation
 from daida_ai.lib.audio_embed import embed_audio_to_pptx
 from daida_ai.lib.slideshow import configure_slideshow, _estimate_mp3_duration_ms
+from tests.conftest import DUMMY_MP3_BYTES
 
 # OOXML名前空間
 _ns = {
@@ -37,7 +38,7 @@ def pptx_with_audio(tmp_output_dir: Path) -> Path:
     audio_dir = tmp_output_dir / "audio"
     audio_dir.mkdir()
     # ダミーMP3（104バイト）
-    dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+    dummy_mp3 = DUMMY_MP3_BYTES
     (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
     (audio_dir / "slide_003.mp3").write_bytes(dummy_mp3)
 
@@ -219,7 +220,7 @@ class Test既存アニメーション保持:
         # スライド1に音声を埋め込む
         audio_dir = tmp_output_dir / "audio_anim"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "with_audio_anim.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -900,7 +901,7 @@ class TestLibreOffice互換mainSeqDur:
         audio_dir = tmp_output_dir / "audio_anim_protect"
         audio_dir.mkdir()
         # 約6msのフェイクMP3 (音声長 < 500ms)
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "anim_protect_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -989,7 +990,7 @@ class TestLibreOffice互換mainSeqDur:
         audio_dir = tmp_output_dir / "audio_delay_anim"
         audio_dir.mkdir()
         # 約6msのフェイクMP3 (音声長 << 6000ms)
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "delay_anim_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1076,7 +1077,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_nested_delay"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "nested_delay_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1171,7 +1172,7 @@ class TestLibreOffice互換mainSeqDur:
         audio_dir = tmp_output_dir / "audio_adv_sync"
         audio_dir.mkdir()
         # 約6msのフェイクMP3 (音声長 << 5000ms アニメーション)
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "adv_sync_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1263,7 +1264,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_event_chain"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "event_chain_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1453,7 +1454,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_onbegin"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "onbegin_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1569,7 +1570,7 @@ class TestLibreOffice互換mainSeqDur:
         audio_dir = tmp_output_dir / "audio_repeat"
         audio_dir.mkdir()
         # 音声長 << 3000ms
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "repeat_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1666,7 +1667,7 @@ class TestLibreOffice互換mainSeqDur:
         audio_dir = tmp_output_dir / "audio_onclick"
         audio_dir.mkdir()
         # 約6msのフェイクMP3
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "onclick_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1758,7 +1759,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_repeatdur"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "repeatdur_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1844,7 +1845,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_repeat_indef"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "repeat_indef_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)
@@ -1930,7 +1931,7 @@ class TestLibreOffice互換mainSeqDur:
 
         audio_dir = tmp_output_dir / "audio_cycle"
         audio_dir.mkdir()
-        dummy_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
+        dummy_mp3 = DUMMY_MP3_BYTES
         (audio_dir / "slide_001.mp3").write_bytes(dummy_mp3)
         with_audio = tmp_output_dir / "cycle_audio.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, with_audio)

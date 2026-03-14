@@ -84,6 +84,18 @@ Claude Code で以下のように呼び出します:
 | edge-tts | Microsoft Edge TTS。インストール不要 | デフォルト |
 | VOICEVOX | ずんだもん等のキャラクター音声 | [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) の起動が必要 |
 
+## 注意事項
+
+### LibreOffice Impress での再生について
+
+自動ページ送り（スライドショー中に音声終了後に自動で次のスライドに進む機能）は **PowerPoint（Windows / macOS）でのみ動作** します。
+
+**LibreOffice Impress では自動ページ送りが動作しません**。これは LibreOffice が PPTX 内のタイミング設定（`advTm`）を正しく処理しない既知の制限によるものです（[Bug 101527](https://bugs.documentfoundation.org/show_bug.cgi?id=101527)）。
+
+LibreOffice で再生する場合は、以下のいずれかで対応してください:
+- **手動**でスライドを送る（クリックまたは矢印キー）
+- LibreOffice 上で「スライド切り替え」パネルから各スライドの自動切り替え時間を手動設定する
+
 ## ライセンス
 
 MIT

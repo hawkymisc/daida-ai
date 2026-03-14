@@ -8,7 +8,7 @@ from pptx import Presentation
 from daida_ai.lib.slide_spec import SlideSpec, SlideMetadata, Slide
 from daida_ai.lib.slide_builder import build_presentation
 from daida_ai.lib.audio_embed import embed_audio_to_pptx
-from daida_ai.lib.slideshow import configure_slideshow
+from daida_ai.lib.slideshow import configure_slideshow, _estimate_mp3_duration_ms
 
 # OOXML名前空間
 _ns = {
@@ -2032,3 +2032,44 @@ class TestLibreOffice互換mainSeqDur:
         trans = slide_out.element.find("p:transition", _ns)
         adv_tm = int(trans.get("advTm"))
         assert adv_tm > 0, f"循環参照があっても advTm は正の値であるべき: {adv_tm}"
+
+
+class TestA5_estimate_mp3_duration_ms:
+    """A5: _estimate_mp3_duration_ms のユニットテスト
+
+    conftest.py の build_mp3_frame / build_id3_header を使って
+    既知のビットレート・データサイズから期待ms値を検証する。
+    """
+
+    def test_MPEG1_128kbps(self, mp3_mpeg1_128kbps):
+        data, expected_ms = mp3_mpeg1_128kbps
+        result = _estimate_mp3_duration_ms(data)
+        assert result == expected_ms
+
+    def test_MPEG2_64kbps(self, mp3_mpeg2_64kbps):
+        data, expected_ms = mp3_mpeg2_64kbps
+        result = _estimate_mp3_duration_ms(data)
+        assert result == expected_ms
+
+    def test_ID3タグ付きMP3(self, mp3_with_id3_tag):
+        data, expected_ms = mp3_with_id3_tag
+        result = _estimate_mp3_duration_ms(data)
+        assert result == expected_ms
+
+    def test_フレームヘッダなしは0を返す(self, mp3_no_frame_header):
+        result = _estimate_mp3_duration_ms(mp3_no_frame_header)
+        assert result == 0
+
+    def test_空データは0を返す(self):
+        result = _estimate_mp3_duration_ms(b"")
+        assert result == 0
+
+    def test_10バイト未満は0を返す(self):
+        result = _estimate_mp3_duration_ms(b"\x00" * 5)
+        assert result == 0
+
+    def test_戻り値は常に非負整数(self, mp3_mpeg1_128kbps):
+        data, _ = mp3_mpeg1_128kbps
+        result = _estimate_mp3_duration_ms(data)
+        assert isinstance(result, int)
+        assert result >= 0

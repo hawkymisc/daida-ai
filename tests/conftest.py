@@ -1,9 +1,63 @@
-"""共通fixtures: サンプルアウトライン、一時ディレクトリ、モックPPTX"""
+"""共通fixtures: サンプルアウトライン、一時ディレクトリ、モックPPTX、MP3テストデータ"""
 
 import pytest
 from pathlib import Path
 import tempfile
 from PIL import Image
+
+
+# ---------------------------------------------------------------------------
+# MP3テストデータ構築ヘルパー
+# ---------------------------------------------------------------------------
+
+def build_mp3_frame(
+    *,
+    mpeg1: bool = True,
+    bitrate_idx: int = 0b1001,
+    audio_size: int = 16000,
+) -> bytes:
+    """テスト用MP3フレームヘッダ + ダミー音声データを構築する。
+
+    Args:
+        mpeg1: True=MPEG1(0xFB), False=MPEG2(0xF3)
+        bitrate_idx: ビットレートインデックス（4bit）。MPEG1: 0b1001=128kbps, MPEG2: 0b1000=64kbps
+        audio_size: フレームヘッダ以降の音声データサイズ（バイト）
+
+    Returns:
+        MP3フレームヘッダ + ゼロ埋めデータ
+
+    期待デュレーション計算:
+        duration_ms = (audio_size + 4) * 8 / (bitrate_kbps * 1000) * 1000
+        ※ +4 はフレームヘッダ4バイト分（_estimate_mp3_duration_msは offset以降の全バイトを使う）
+    """
+    # byte0: 0xFF（sync）
+    # byte1: MPEG1 Layer3 = 0xFB (11111011), MPEG2 Layer3 = 0xF3 (11110011)
+    byte1 = 0xFB if mpeg1 else 0xF3
+    # byte2: ビットレートインデックス(上位4bit) + サンプリングレート(00) + パディング(0) + チャネル(0)
+    byte2 = (bitrate_idx << 4) & 0xF0
+    # byte3: 0x00
+    header = bytes([0xFF, byte1, byte2, 0x00])
+    return header + b"\x00" * audio_size
+
+
+def build_id3_header(tag_size: int = 0) -> bytes:
+    """ID3v2ヘッダを構築する。
+
+    Args:
+        tag_size: ID3タグのデータサイズ（ヘッダ10バイトを含まない）
+
+    Returns:
+        10バイトのID3ヘッダ + ゼロ埋めタグデータ
+    """
+    # ID3v2.3, フラグ=0, サイズはsyncsafe integer
+    s = tag_size
+    size_bytes = bytes([
+        (s >> 21) & 0x7F,
+        (s >> 14) & 0x7F,
+        (s >> 7) & 0x7F,
+        s & 0x7F,
+    ])
+    return b"ID3" + bytes([0x03, 0x00, 0x00]) + size_bytes + b"\x00" * tag_size
 
 
 @pytest.fixture
@@ -101,3 +155,55 @@ def sample_svg(tmp_output_dir) -> Path:
         "</svg>"
     )
     return path
+
+
+# ---------------------------------------------------------------------------
+# MP3 fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mp3_mpeg1_128kbps() -> tuple[bytes, int]:
+    """MPEG1 128kbps, 16000bytes音声データ。
+
+    Returns:
+        (mp3_data, expected_duration_ms)
+        duration = (16000 + 4) * 8 / (128 * 1000) * 1000 = 1000.25 → 1000ms
+    """
+    data = build_mp3_frame(mpeg1=True, bitrate_idx=0b1001, audio_size=16000)
+    expected_ms = int((len(data)) * 8 / (128 * 1000) * 1000)
+    return data, expected_ms
+
+
+@pytest.fixture
+def mp3_mpeg2_64kbps() -> tuple[bytes, int]:
+    """MPEG2 64kbps, 8000bytes音声データ。
+
+    Returns:
+        (mp3_data, expected_duration_ms)
+        duration = (8000 + 4) * 8 / (64 * 1000) * 1000 = 1000.5 → 1000ms
+    """
+    data = build_mp3_frame(mpeg1=False, bitrate_idx=0b1000, audio_size=8000)
+    expected_ms = int((len(data)) * 8 / (64 * 1000) * 1000)
+    return data, expected_ms
+
+
+@pytest.fixture
+def mp3_with_id3_tag() -> tuple[bytes, int]:
+    """ID3タグ付きMPEG1 128kbps。
+
+    Returns:
+        (mp3_data, expected_duration_ms)
+        ID3タグ(10+100bytes)の後にMP3フレーム。デュレーションはフレーム部分のみで計算。
+    """
+    id3 = build_id3_header(tag_size=100)
+    frame = build_mp3_frame(mpeg1=True, bitrate_idx=0b1001, audio_size=16000)
+    data = id3 + frame
+    audio_bytes = len(frame)  # ID3スキップ後のバイト数
+    expected_ms = int(audio_bytes * 8 / (128 * 1000) * 1000)
+    return data, expected_ms
+
+
+@pytest.fixture
+def mp3_no_frame_header() -> bytes:
+    """MP3フレームヘッダが存在しないデータ。0を返すべき。"""
+    return b"\x00" * 200

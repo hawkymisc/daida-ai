@@ -170,15 +170,18 @@ EDGE_CASES = [
 | 長いノートの推定時間 | 長いノートほど長いadvTmになる | `test_slideshow.py` (`test_長いノートは長いadvTmになる`) |
 | 最低値制約 | 短いノートでも最低3秒（`_MIN_NOTE_DURATION_MS`） | `test_slideshow.py` (`test_ノートベースタイミングの最低値は3秒`) |
 
-> **音声デュレーション計測について**: `_estimate_mp3_duration_ms()` はMP3フレームヘッダからビットレートを判定して
-> デュレーションを計算するが、既存テスト（`test_音声ありスライドのmainSeq_durが音声長になる`）は
-> dur属性が非空かつ"indefinite"でないことのみ検証しており、実際のms値の正確さは未検証。
+| MP3デュレーション計測（MPEG1 128kbps） | 既知データサイズから期待ms値と一致 | `test_slideshow.py` (TestA5_estimate_mp3_duration_ms) |
+| MP3デュレーション計測（MPEG2 64kbps） | 既知データサイズから期待ms値と一致 | `test_slideshow.py` |
+| ID3タグ付きMP3 | ID3スキップ後のデータ量で正しく計算 | `test_slideshow.py` |
+| フレームヘッダなし | 0を返す | `test_slideshow.py` |
+| 空データ / 10バイト未満 | 0を返す | `test_slideshow.py` |
+
+テスト用MP3データは `conftest.py` の `build_mp3_frame()` / `build_id3_header()` で構築。fixture名: `mp3_mpeg1_128kbps`, `mp3_mpeg2_64kbps`, `mp3_with_id3_tag`, `mp3_no_frame_header`。
 
 ### 計画中（テスト未実装）
 
 | テスト項目 | アサーション |
 |-----------|-------------|
-| `_estimate_mp3_duration_ms`ユニットテスト | 既知のMP3ペイロードに対して計算値が実際のデュレーションと一致 |
 | 実TTS音声長との比較 | 推定時間と実VOICEVOX音声長の誤差率平均 < 20% |
 
 > **注意**: 実TTS音声長との比較はVOICEVOXがローカル起動済みの環境でのみ実行可能。

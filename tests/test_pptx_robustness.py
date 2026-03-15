@@ -24,10 +24,9 @@ def _make_valid_spec(*, title="テスト", body=None, subtitle=None):
     slide = {
         "layout": "title_and_content",
         "title": title,
+        "body": body if body is not None else ["デフォルト項目"],
         "note": "テスト用のノートです",
     }
-    if body is not None:
-        slide["body"] = body
     if subtitle is not None:
         slide["subtitle"] = subtitle
     return {

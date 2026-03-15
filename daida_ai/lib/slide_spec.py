@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -18,6 +19,8 @@ TITLE_EXEMPT_LAYOUTS = {"blank"}
 MAX_TITLE_LENGTH = 100
 MAX_SUBTITLE_LENGTH = 200
 MAX_BODY_ITEM_LENGTH = 200
+MAX_NOTE_LENGTH = 10000
+MAX_HEADING_LENGTH = 100
 
 VALID_TEMPLATES = {"tech", "casual", "formal"}
 VALID_LAYOUTS = {
@@ -27,6 +30,21 @@ VALID_LAYOUTS = {
     "two_content",
     "title_only",
     "blank",
+}
+
+# レイアウトごとのフィールド定義: 必須 / 任意 / 禁止
+# body, left, right のみ制御（title, note, image, subtitle は別途チェック）
+_LAYOUT_REQUIRED_FIELDS: dict[str, set[str]] = {
+    "two_content": {"left", "right"},
+    "title_and_content": {"body"},
+}
+_LAYOUT_FORBIDDEN_FIELDS: dict[str, set[str]] = {
+    "title_slide": {"body", "left", "right"},
+    "section_header": {"body", "left", "right"},
+    "title_only": {"body", "left", "right"},
+    "blank": {"body", "left", "right"},
+    "title_and_content": {"left", "right"},
+    "two_content": {"body"},
 }
 
 
@@ -109,6 +127,32 @@ def _parse_slide(data: dict) -> Slide:
     )
 
 
+def _validate_layout_fields(idx: int, slide: Slide) -> None:
+    """レイアウトに対するフィールドの必須/禁止チェック。"""
+    layout = slide.layout
+    field_values = {
+        "body": slide.body,
+        "left": slide.left,
+        "right": slide.right,
+    }
+
+    # 必須フィールドチェック
+    for field_name in _LAYOUT_REQUIRED_FIELDS.get(layout, set()):
+        if field_values[field_name] is None:
+            raise ValueError(
+                f"slide[{idx}] (layout={layout}): "
+                f"'{field_name}' is required for this layout"
+            )
+
+    # 禁止フィールドチェック
+    for field_name in _LAYOUT_FORBIDDEN_FIELDS.get(layout, set()):
+        if field_values[field_name] is not None:
+            raise ValueError(
+                f"slide[{idx}] (layout={layout}): "
+                f"'{field_name}' is not supported for this layout"
+            )
+
+
 def validate_slide_spec(
     data: dict,
     *,
@@ -133,10 +177,22 @@ def validate_slide_spec(
     meta_raw = data["metadata"]
     if "title" not in meta_raw:
         raise ValueError("metadata requires 'title' field")
+    meta_subtitle = meta_raw.get("subtitle", "")
+    meta_event = meta_raw.get("event", "")
+    if len(meta_subtitle) > MAX_SUBTITLE_LENGTH:
+        raise ValueError(
+            f"metadata.subtitle exceeds {MAX_SUBTITLE_LENGTH} chars "
+            f"(got {len(meta_subtitle)})"
+        )
+    if len(meta_event) > MAX_SUBTITLE_LENGTH:
+        raise ValueError(
+            f"metadata.event exceeds {MAX_SUBTITLE_LENGTH} chars "
+            f"(got {len(meta_event)})"
+        )
     metadata = SlideMetadata(
         title=meta_raw["title"],
-        subtitle=meta_raw.get("subtitle", ""),
-        event=meta_raw.get("event", ""),
+        subtitle=meta_subtitle,
+        event=meta_event,
         template=meta_raw.get("template", "tech"),
     )
 
@@ -153,8 +209,20 @@ def validate_slide_spec(
             f"slides must have at most {max_slides} slides, got {len(slides)}"
         )
 
+    # 先頭スライドのレイアウト推奨チェック
+    if slides and slides[0].layout != "title_slide":
+        warnings.warn(
+            f"slides[0] layout is '{slides[0].layout}', not 'title_slide'. "
+            f"Consider starting with a title_slide for a proper presentation.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     # 各スライドのバリデーション
     for i, slide in enumerate(slides):
+        # レイアウト-フィールド整合性チェック
+        _validate_layout_fields(i, slide)
+
         # タイトル非空チェック（blankレイアウトは免除）
         if slide.layout not in TITLE_EXEMPT_LAYOUTS:
             if not slide.title or not slide.title.strip():
@@ -181,6 +249,20 @@ def validate_slide_spec(
                     f"slide[{i}] (layout={slide.layout}) requires a non-empty note"
                 )
 
+        # ノート文字数上限
+        if slide.note and len(slide.note) > MAX_NOTE_LENGTH:
+            raise ValueError(
+                f"slide[{i}] note exceeds {MAX_NOTE_LENGTH} chars "
+                f"(got {len(slide.note)})"
+            )
+
+        # image 空文字列チェック
+        if slide.image is not None and not slide.image.strip():
+            raise ValueError(
+                f"slide[{i}] image must not be empty string "
+                f"(use null/None to omit)"
+            )
+
         # 情報密度チェック（bodyがある場合のみ）
         if slide.body is not None:
             if len(slide.body) < MIN_BODY_ITEMS:
@@ -200,13 +282,28 @@ def validate_slide_spec(
                         f"(got {len(item)})"
                     )
 
-        # 2カラムレイアウトのbody検証
+        # 2カラムレイアウトの詳細検証
         for col_name, col in [("left", slide.left), ("right", slide.right)]:
-            if col is not None and col.body:
-                if len(col.body) > MAX_BODY_ITEMS:
+            if col is None:
+                continue
+            # heading 長チェック
+            if len(col.heading) > MAX_HEADING_LENGTH:
+                raise ValueError(
+                    f"slide[{i}] {col_name}.heading exceeds "
+                    f"{MAX_HEADING_LENGTH} chars (got {len(col.heading)})"
+                )
+            # body 件数チェック
+            if col.body and len(col.body) > MAX_BODY_ITEMS:
+                raise ValueError(
+                    f"slide[{i}] {col_name}.body must have at most "
+                    f"{MAX_BODY_ITEMS} items, got {len(col.body)}"
+                )
+            # body 項目文字数チェック
+            for j, item in enumerate(col.body):
+                if len(item) > MAX_BODY_ITEM_LENGTH:
                     raise ValueError(
-                        f"slide[{i}] {col_name}.body must have at most "
-                        f"{MAX_BODY_ITEMS} items, got {len(col.body)}"
+                        f"slide[{i}] {col_name}.body[{j}] exceeds "
+                        f"{MAX_BODY_ITEM_LENGTH} chars (got {len(item)})"
                     )
 
     # 推定発話時間チェック

@@ -21,6 +21,19 @@ try:
 except ImportError:
     _cairosvg = None
 
+# inject_japanese_fonts の有効/無効フラグ（テスト用）
+_inject_japanese_fonts_enabled = True
+
+# cairosvg/fontconfig が日本語グリフを持つと確認済みのフォントリスト
+# 優先順位: macOS (Hiragino) > Windows (Yu Gothic) > Linux (Noto CJK) > fallback
+_JP_FONT_FALLBACK = (
+    "Hiragino Sans, Hiragino Kaku Gothic ProN, Hiragino Kaku Gothic Pro, "
+    "Yu Gothic, Meiryo, Noto Sans CJK JP, Noto Serif CJK JP, "
+)
+
+# 既に日本語フォントが含まれていると見なすキーワード
+_JP_FONT_KEYWORDS = ("hiragino", "yu gothic", "meiryo", "noto sans cjk", "noto serif cjk")
+
 
 class SVGConversionError(Exception):
     """SVG変換に失敗した場合の例外"""
@@ -203,6 +216,74 @@ def validate_svg_font_sizes(
     return violations
 
 
+def inject_japanese_fonts(svg_content: str) -> str:
+    """SVG内の font-family 属性に日本語フォントのフォールバックを注入する。
+
+    cairosvg/libcairo は font-family="sans-serif" を Noto Sans（CJKグリフなし）に
+    解決するため、日本語テキストが豆腐（□）になる。日本語対応フォントを先頭に
+    追加することで、fontconfig が正しいフォントを選択できるようにする。
+
+    既に Hiragino / Yu Gothic / Meiryo / Noto CJK が含まれている場合は変更しない。
+
+    対応箇所:
+    - font-family="..." 属性 (ダブル/シングルクォート)
+    - style="... font-family: ...; ..." インラインスタイル
+
+    非対応（意図的）:
+    - <style> ブロック内の @font-face { font-family: ... } — フェース名宣言への
+      誤注入を避けるため、<style> ブロックは変更しない。
+      このプロジェクトが生成するSVGは <style> ブロックを使わないため問題ない。
+    """
+    def _needs_injection(families: str) -> bool:
+        return not any(kw in families.lower() for kw in _JP_FONT_KEYWORDS)
+
+    def _rewrite_attr(m: re.Match) -> str:
+        quote = m.group(1)
+        families = m.group(2)
+        if not _needs_injection(families):
+            return m.group(0)
+        return f'font-family={quote}{_JP_FONT_FALLBACK}{families}{quote}'
+
+    def _rewrite_style(m: re.Match) -> str:
+        prop_name = m.group(1)
+        families = m.group(2).rstrip()
+        if not _needs_injection(families):
+            return m.group(0)
+        return f'{prop_name}{_JP_FONT_FALLBACK}{families}'
+
+    # <style> ブロックを一時的にプレースホルダに退避して正規表現の誤爆を防ぐ。
+    # UUID をセッション固有のプレフィックスとして使い、SVG内容との衝突を防ぐ。
+    import uuid
+    _session_id = uuid.uuid4().hex
+    style_blocks: list[str] = []
+
+    def _stash_style(m: re.Match) -> str:
+        style_blocks.append(m.group(0))
+        return f'__SVG_STYLE_{_session_id}_{len(style_blocks) - 1}__'
+
+    result = re.sub(r'<style[^>]*>.*?</style>', _stash_style, svg_content,
+                    flags=re.DOTALL | re.IGNORECASE)
+
+    # font-family="..." 属性
+    result = re.sub(
+        r'font-family=(["\'])([^"\']+)\1',
+        _rewrite_attr,
+        result,
+    )
+    # style="... font-family: ...; ..." インラインスタイル
+    result = re.sub(
+        r'(font-family\s*:\s*)([^;"\'>]+)',
+        _rewrite_style,
+        result,
+    )
+
+    # 退避した <style> ブロックを復元
+    for i, block in enumerate(style_blocks):
+        result = result.replace(f'__SVG_STYLE_{_session_id}_{i}__', block)
+
+    return result
+
+
 def convert_svg_to_png(
     svg_path: str,
     output_path: str | None = None,
@@ -240,7 +321,22 @@ def convert_svg_to_png(
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        svg_bytes = path.read_bytes()
+        if _inject_japanese_fonts_enabled:
+            # このプロジェクトが生成するSVGは常にUTF-8。
+            # bytestring でフォント注入済みSVGを渡しつつ、url を base URI として
+            # 同時指定することで相対パス（<image href="..."> 等）の解決を維持する。
+            # UTF-8以外のSVGは稀なケースとして注入をスキップし、元バイト列をそのまま使う。
+            try:
+                svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8"))
+                svg_bytes = svg_text.encode("utf-8")
+            except UnicodeDecodeError:
+                logger.warning(
+                    "SVG is not valid UTF-8; skipping Japanese font injection: %s",
+                    svg_path,
+                )
         _cairosvg.svg2png(
+            bytestring=svg_bytes,
             url=str(path.resolve()),
             write_to=output_path,
             scale=scale,

@@ -9,6 +9,7 @@ dependencies = [
     "pydub>=0.25.1",
     "audioop-lts>=0.2.1",
     "Pillow>=10.0.0",
+    "defusedxml>=0.7.0",
 ]
 
 [project.optional-dependencies]

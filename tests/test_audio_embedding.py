@@ -255,3 +255,46 @@ class TestPowerPoint互換性:
         assert rel.reltype == RT.HYPERLINK, (
             f"hlinkClickはRT.HYPERLINKを参照すべき、実際: {rel.reltype}"
         )
+
+
+class Testアイコン配置:
+    """音声アイコンがスライド右下に配置されることを検証"""
+
+    _ns = {
+        "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    }
+
+    def test_アイコンがスライド右下に配置される(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """16:9スライドでもアイコンが右下隅にあること"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        slide = prs.slides[0]
+        slide_w = int(prs.slide_width)
+        slide_h = int(prs.slide_height)
+
+        pics = slide.element.findall(".//p:pic", self._ns)
+        audio_pic = None
+        for pic in pics:
+            if pic.find(".//a:audioFile", self._ns) is not None:
+                audio_pic = pic
+                break
+        assert audio_pic is not None
+
+        off = audio_pic.find(".//a:off", self._ns)
+        assert off is not None, "a:off要素が見つかりません"
+        x = int(off.get("x"))
+        y = int(off.get("y"))
+
+        # アイコンはスライド右端から1インチ(914400 EMU)以内にあるべき
+        assert x > slide_w - 914400, (
+            f"x={x} はスライド右端({slide_w})から遠すぎる"
+        )
+        # アイコンはスライド下端から1インチ以内にあるべき
+        assert y > slide_h - 914400, (
+            f"y={y} はスライド下端({slide_h})から遠すぎる"
+        )

@@ -329,7 +329,7 @@ rendered_pt = f_svg × display_w_emu / (viewBox_w × 12700)
 | casual | `#FFF8F0` | `#FF6B35` | `#06D6A0` | `#2D3748` |
 | formal | `#FFFFFF` | `#1B2D45` | `#C49B66` | `#1B2D45` |
 
-**注意**: フォントは必ず `font-family="sans-serif"` を指定する（環境依存を避けるため）。
+**注意**: フォントは必ず `font-family="sans-serif"` を指定する。cairosvg が自動的に日本語フォントのフォールバックを注入するため、日本語テキストが豆腐（□）になることはない。`font-family` に `Hiragino` / `Yu Gothic` / `Noto Sans CJK JP` などを既に含む場合は注入をスキップする。
 
 #### SVGパターン集
 

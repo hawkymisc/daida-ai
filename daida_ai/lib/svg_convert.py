@@ -21,6 +21,19 @@ try:
 except ImportError:
     _cairosvg = None
 
+# inject_japanese_fonts の有効/無効フラグ（テスト用）
+_inject_japanese_fonts_enabled = True
+
+# cairosvg/fontconfig が日本語グリフを持つと確認済みのフォントリスト
+# 優先順位: macOS (Hiragino) > Windows (Yu Gothic) > Linux (Noto CJK) > fallback
+_JP_FONT_FALLBACK = (
+    "Hiragino Sans, Hiragino Kaku Gothic ProN, Hiragino Kaku Gothic Pro, "
+    "Yu Gothic, Meiryo, Noto Sans CJK JP, Noto Serif CJK JP, "
+)
+
+# 既に日本語フォントが含まれていると見なすキーワード
+_JP_FONT_KEYWORDS = ("hiragino", "yu gothic", "meiryo", "noto sans cjk", "noto serif cjk")
+
 
 class SVGConversionError(Exception):
     """SVG変換に失敗した場合の例外"""
@@ -203,6 +216,51 @@ def validate_svg_font_sizes(
     return violations
 
 
+def inject_japanese_fonts(svg_content: str) -> str:
+    """SVG内の font-family 属性に日本語フォントのフォールバックを注入する。
+
+    cairosvg/libcairo は font-family="sans-serif" を Noto Sans（CJKグリフなし）に
+    解決するため、日本語テキストが豆腐（□）になる。日本語対応フォントを先頭に
+    追加することで、fontconfig が正しいフォントを選択できるようにする。
+
+    既に Hiragino / Yu Gothic / Meiryo / Noto CJK が含まれている場合は変更しない。
+
+    対応箇所:
+    - font-family="..." 属性 (ダブル/シングルクォート)
+    - style="... font-family: ...; ..." インラインスタイル
+    """
+    def _needs_injection(families: str) -> bool:
+        return not any(kw in families.lower() for kw in _JP_FONT_KEYWORDS)
+
+    def _rewrite_attr(m: re.Match) -> str:
+        quote = m.group(1)
+        families = m.group(2)
+        if not _needs_injection(families):
+            return m.group(0)
+        return f'font-family={quote}{_JP_FONT_FALLBACK}{families}{quote}'
+
+    def _rewrite_style(m: re.Match) -> str:
+        prop_name = m.group(1)
+        families = m.group(2)
+        if not _needs_injection(families):
+            return m.group(0)
+        return f'{prop_name}{_JP_FONT_FALLBACK}{families}'
+
+    # font-family="..." 属性
+    result = re.sub(
+        r'font-family=(["\'])([^"\']+)\1',
+        _rewrite_attr,
+        svg_content,
+    )
+    # style="... font-family: ...; ..." インラインスタイル
+    result = re.sub(
+        r'(font-family\s*:\s*)([^;"\'>]+)',
+        _rewrite_style,
+        result,
+    )
+    return result
+
+
 def convert_svg_to_png(
     svg_path: str,
     output_path: str | None = None,
@@ -240,8 +298,12 @@ def convert_svg_to_png(
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        svg_bytes = path.read_bytes()
+        if _inject_japanese_fonts_enabled:
+            svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8", errors="replace"))
+            svg_bytes = svg_text.encode("utf-8")
         _cairosvg.svg2png(
-            url=str(path.resolve()),
+            bytestring=svg_bytes,
             write_to=output_path,
             scale=scale,
         )

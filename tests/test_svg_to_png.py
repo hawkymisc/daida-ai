@@ -3,7 +3,11 @@
 from pathlib import Path
 import pytest
 
-from daida_ai.lib.svg_convert import convert_svg_to_png, SVGConversionError
+from daida_ai.lib.svg_convert import (
+    convert_svg_to_png,
+    SVGConversionError,
+    inject_japanese_fonts,
+)
 
 
 # テスト用SVG
@@ -146,6 +150,52 @@ class TestSVGContent:
         assert Path(result).exists()
         assert Path(result).read_bytes()[:4] == b"\x89PNG"
 
+    def test_日本語テキストを含むSVGが豆腐にならない(self, tmp_path):
+        """font-family="sans-serif"のSVGでも日本語フォントが自動注入されて豆腐にならない。
+
+        豆腐判定: sans-serif のみで変換した PNG と比較して画素が異なることを確認する。
+        (sans-serif → Noto Sans → CJKグリフなし → 豆腐 が既知の状態)
+        """
+        from PIL import Image
+
+        svg_sans = """\
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
+  <rect width="400" height="200" fill="#1E293B"/>
+  <text x="200" y="110" text-anchor="middle" fill="white"
+        font-size="40" font-family="sans-serif">日本語テスト</text>
+</svg>
+"""
+        svg_japanese = """\
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
+  <rect width="400" height="200" fill="#1E293B"/>
+  <text x="200" y="110" text-anchor="middle" fill="white"
+        font-size="40" font-family="sans-serif">日本語テスト</text>
+</svg>
+"""
+        # 修正前: font-family="sans-serif" のみ (豆腐の基準)
+        svg_tofu_path = tmp_path / "tofu.svg"
+        svg_tofu_path.write_text(svg_sans, encoding="utf-8")
+        png_tofu = tmp_path / "tofu.png"
+
+        import daida_ai.lib.svg_convert as mod
+        original = mod._inject_japanese_fonts_enabled
+        try:
+            mod._inject_japanese_fonts_enabled = False
+            convert_svg_to_png(str(svg_tofu_path), str(png_tofu))
+        finally:
+            mod._inject_japanese_fonts_enabled = original
+
+        # 修正後: inject_japanese_fonts が適用された状態
+        svg_fixed_path = tmp_path / "fixed.svg"
+        svg_fixed_path.write_text(svg_japanese, encoding="utf-8")
+        png_fixed = tmp_path / "fixed.png"
+        convert_svg_to_png(str(svg_fixed_path), str(png_fixed))
+
+        # 豆腐PNGと修正後PNGは異なるはず
+        tofu_data = list(Image.open(png_tofu).convert("RGB").getdata())
+        fixed_data = list(Image.open(png_fixed).convert("RGB").getdata())
+        assert tofu_data != fixed_data, "日本語フォントが注入されず豆腐になっています"
+
     def test_16_9アスペクト比のSVG(self, tmp_path):
         """スライド全面用の16:9 SVG"""
         svg = """\
@@ -161,3 +211,67 @@ class TestSVGContent:
         result = convert_svg_to_png(str(svg_path), str(png_path))
 
         assert Path(result).exists()
+
+
+class TestInjectJapaneseFonts:
+    """inject_japanese_fonts — font-family への日本語フォント自動注入"""
+
+    def test_sans_serifに日本語フォントが先頭に注入される(self):
+        svg = '<text font-family="sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert result.startswith('<text font-family="') or 'font-family=' in result
+        assert "Hiragino" in result
+        assert "sans-serif" in result
+
+    def test_注入後もsans_serifが末尾に残る(self):
+        svg = '<text font-family="sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        # sans-serif はフォールバックとして末尾に残すべき
+        families = result.split('font-family="')[1].split('"')[0]
+        assert families.strip().endswith("sans-serif")
+
+    def test_既にHiraginoが含まれている場合は変更しない(self):
+        svg = '<text font-family="Hiragino Sans, sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert result == svg
+
+    def test_既にYu_Gothicが含まれている場合は変更しない(self):
+        svg = '<text font-family="Yu Gothic, sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert result == svg
+
+    def test_既にNoto_Sans_CJKが含まれている場合は変更しない(self):
+        svg = '<text font-family="Noto Sans CJK JP, sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert result == svg
+
+    def test_font_familyなしの要素は変更しない(self):
+        svg = '<text>テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert result == svg
+
+    def test_inline_styleのfont_familyにも注入される(self):
+        svg = '<text style="font-size:40px; font-family: sans-serif;">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert "Hiragino" in result
+
+    def test_複数のtext要素すべてに注入される(self):
+        svg = (
+            '<text font-family="sans-serif">A</text>'
+            '<text font-family="sans-serif">B</text>'
+        )
+        result = inject_japanese_fonts(svg)
+        # 元の font-family="sans-serif" がそのまま残っていないこと（両方注入済み）
+        assert result.count('font-family="sans-serif"') == 0
+        assert "Hiragino" in result
+
+    def test_シングルクォートのfont_familyにも注入される(self):
+        svg = "<text font-family='sans-serif'>テスト</text>"
+        result = inject_japanese_fonts(svg)
+        assert "Hiragino" in result
+
+    def test_欧文のみのfont_familyにも注入される(self):
+        """欧文フォント指定でも注入する（日本語が混入するSVGに対応）"""
+        svg = '<text font-family="Arial, sans-serif">テスト</text>'
+        result = inject_japanese_fonts(svg)
+        assert "Hiragino" in result

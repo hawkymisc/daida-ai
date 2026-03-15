@@ -295,6 +295,32 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh svg_to_png.py input.svg output.png
 | コンテンツ領域 | `0 0 1200 900` | 4:3、title_only レイアウト向き |
 | アイコン・ロゴ | `0 0 400 400` | 1:1 |
 
+#### SVGフォントサイズ要件
+
+SVGの `font-size` はviewBox座標系のpx単位だが、PPTXに埋め込まれると画像として縮小されるため、
+実際の表示サイズは以下の数式で決まる:
+
+```
+rendered_pt = f_svg × display_w_emu / (viewBox_w × 12700)
+```
+
+- `display_w_emu = min(max_w, max_h × viewBox_w / viewBox_h)`
+- `max_w = slide_w − 2 × 457200`（左右マージン）
+- `max_h = slide_h − img_top − 457200`（title_only: img_top=1600200, blank: img_top=457200）
+- `12700` = 1pt あたりの EMU（OOXML標準）
+
+**登壇資料の最低基準: 12pt**。以下の最低SVG font-size を守ること:
+
+| viewBox | レイアウト | 最低 font-size | 推奨 body | 推奨 heading |
+|---------|-----------|---------------|-----------|-------------|
+| `1920×1080` | title_only | **35 px** | 40 px | 56 px |
+| `1920×1080` | blank | **28 px** | 32 px | 48 px |
+| `1200×900` | title_only | **29 px** | 32 px | 48 px |
+| `1200×900` | blank | **24 px** | 28 px | 40 px |
+
+> **注意**: `create_slides.py` 実行時にSVG内のフォントサイズが自動検証される。
+> 最低値を下回るテキストがある場合、警告が出力される。
+
 #### テンプレート別カラースキーム
 
 | テンプレート | 背景 | アクセント1 | アクセント2 | テキスト |
@@ -319,19 +345,19 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh svg_to_png.py input.svg output.png
   <!-- Step 1 -->
   <rect x="160" y="420" width="400" height="160" rx="16" fill="#38BDF8"/>
   <text x="360" y="510" text-anchor="middle" fill="#1E293B"
-        font-size="28" font-family="sans-serif" font-weight="bold">Step 1</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">Step 1</text>
   <!-- Arrow 1→2 -->
   <line x1="560" y1="500" x2="720" y2="500" stroke="#818CF8" stroke-width="4" marker-end="url(#arr)"/>
   <!-- Step 2 -->
   <rect x="760" y="420" width="400" height="160" rx="16" fill="#38BDF8"/>
   <text x="960" y="510" text-anchor="middle" fill="#1E293B"
-        font-size="28" font-family="sans-serif" font-weight="bold">Step 2</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">Step 2</text>
   <!-- Arrow 2→3 -->
   <line x1="1160" y1="500" x2="1320" y2="500" stroke="#818CF8" stroke-width="4" marker-end="url(#arr)"/>
   <!-- Step 3 -->
   <rect x="1360" y="420" width="400" height="160" rx="16" fill="#38BDF8"/>
   <text x="1560" y="510" text-anchor="middle" fill="#1E293B"
-        font-size="28" font-family="sans-serif" font-weight="bold">Step 3</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">Step 3</text>
 </svg>
 ```
 
@@ -342,23 +368,23 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh svg_to_png.py input.svg output.png
   <!-- Before -->
   <rect x="80" y="120" width="840" height="840" rx="20" fill="#334155" stroke="#475569" stroke-width="2"/>
   <text x="500" y="200" text-anchor="middle" fill="#EF4444"
-        font-size="36" font-family="sans-serif" font-weight="bold">Before</text>
+        font-size="56" font-family="sans-serif" font-weight="bold">Before</text>
   <text x="500" y="400" text-anchor="middle" fill="#94A3B8"
-        font-size="24" font-family="sans-serif">手動で3時間</text>
+        font-size="40" font-family="sans-serif">手動で3時間</text>
   <text x="500" y="460" text-anchor="middle" fill="#94A3B8"
-        font-size="24" font-family="sans-serif">ミスが多い</text>
+        font-size="40" font-family="sans-serif">ミスが多い</text>
   <text x="500" y="520" text-anchor="middle" fill="#94A3B8"
-        font-size="24" font-family="sans-serif">属人化</text>
+        font-size="40" font-family="sans-serif">属人化</text>
   <!-- After -->
   <rect x="1000" y="120" width="840" height="840" rx="20" fill="#334155" stroke="#38BDF8" stroke-width="2"/>
   <text x="1420" y="200" text-anchor="middle" fill="#38BDF8"
-        font-size="36" font-family="sans-serif" font-weight="bold">After</text>
+        font-size="56" font-family="sans-serif" font-weight="bold">After</text>
   <text x="1420" y="400" text-anchor="middle" fill="#E2E8F0"
-        font-size="24" font-family="sans-serif">自動で5分</text>
+        font-size="40" font-family="sans-serif">自動で5分</text>
   <text x="1420" y="460" text-anchor="middle" fill="#E2E8F0"
-        font-size="24" font-family="sans-serif">品質が安定</text>
+        font-size="40" font-family="sans-serif">品質が安定</text>
   <text x="1420" y="520" text-anchor="middle" fill="#E2E8F0"
-        font-size="24" font-family="sans-serif">誰でも実行可能</text>
+        font-size="40" font-family="sans-serif">誰でも実行可能</text>
 </svg>
 ```
 
@@ -374,19 +400,19 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh svg_to_png.py input.svg output.png
   <!-- Frontend -->
   <rect x="660" y="80" width="600" height="140" rx="16" fill="#38BDF8"/>
   <text x="960" y="160" text-anchor="middle" fill="#1E293B"
-        font-size="32" font-family="sans-serif" font-weight="bold">Frontend</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">Frontend</text>
   <!-- Arrow -->
   <line x1="960" y1="220" x2="960" y2="360" stroke="#818CF8" stroke-width="4" marker-end="url(#arr)"/>
   <!-- API -->
   <rect x="660" y="380" width="600" height="140" rx="16" fill="#818CF8"/>
   <text x="960" y="460" text-anchor="middle" fill="#FFFFFF"
-        font-size="32" font-family="sans-serif" font-weight="bold">API Server</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">API Server</text>
   <!-- Arrow -->
   <line x1="960" y1="520" x2="960" y2="660" stroke="#818CF8" stroke-width="4" marker-end="url(#arr)"/>
   <!-- Database -->
   <rect x="660" y="680" width="600" height="140" rx="16" fill="#334155" stroke="#38BDF8" stroke-width="2"/>
   <text x="960" y="760" text-anchor="middle" fill="#38BDF8"
-        font-size="32" font-family="sans-serif" font-weight="bold">Database</text>
+        font-size="40" font-family="sans-serif" font-weight="bold">Database</text>
 </svg>
 ```
 

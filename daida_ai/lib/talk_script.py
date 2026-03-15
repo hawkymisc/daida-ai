@@ -67,7 +67,12 @@ def write_notes(
     prs.save(str(output_path))
 
 
-def export_tts_script(notes: list[str], output_path: Path) -> Path:
+def export_tts_script(
+    notes: list[str],
+    output_path: Path,
+    *,
+    dict_entries: list[tuple[str, str]] | None = None,
+) -> Path:
     """ノートリストをTTSスクリプトファイルにエクスポートする。
 
     ユーザーが読み上げテキストを確認・修正できるよう、
@@ -76,13 +81,18 @@ def export_tts_script(notes: list[str], output_path: Path) -> Path:
     Args:
         notes: スライドごとのスピーカーノート
         output_path: 出力ファイルパス
+        dict_entries: 読み辞書エントリ（指定時はノートに自動適用）
 
     Returns:
         出力ファイルパス
     """
+    from daida_ai.lib.pronunciation_dict import apply_dict
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for i, note in enumerate(notes):
+        if dict_entries:
+            note = apply_dict(note, dict_entries)
         lines.append(_DELIMITER_FMT.format(idx=i))
         lines.append(note)
         lines.append("")  # 区切り線間の空行

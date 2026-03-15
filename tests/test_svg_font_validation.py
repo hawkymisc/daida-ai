@@ -105,6 +105,14 @@ class TestComputeMinSvgFontSize:
         result = compute_min_svg_font_size(1920, 1080, is_blank=False, min_pt=16)
         assert result == 46
 
+    def test_viewBox高さゼロでValueError(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_min_svg_font_size(1920, 0, is_blank=False)
+
+    def test_viewBox幅ゼロでValueError(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_min_svg_font_size(0, 1080, is_blank=False)
+
     def test_カスタムスライドサイズ(self):
         # 4:3 slide (9144000 x 6858000)
         result = compute_min_svg_font_size(

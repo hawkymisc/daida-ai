@@ -5,6 +5,7 @@ slide_builder.py と scripts/svg_to_png.py の両方から使用される。
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -12,6 +13,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 try:
     import cairosvg as _cairosvg
@@ -60,7 +63,14 @@ def compute_min_svg_font_size(
     """PPTXで min_pt 以上に表示されるための最低SVGフォントサイズを算出する。
 
     数式: min_svg_font = ⌈min_pt × 12700 × viewBox_w / display_w_emu⌉
+
+    Raises:
+        ValueError: viewbox_w/viewbox_h が 0 以下の場合
     """
+    if viewbox_w <= 0 or viewbox_h <= 0:
+        raise ValueError(
+            f"viewBox dimensions must be positive: {viewbox_w}x{viewbox_h}"
+        )
     margin = _IMG_MARGIN
     img_top = _IMG_TOP_BLANK if is_blank else _IMG_TOP_TITLE
     max_w = slide_w - 2 * margin
@@ -70,10 +80,16 @@ def compute_min_svg_font_size(
 
 
 def _parse_font_size(value: str) -> float | None:
-    """font-size 属性値から数値を抽出する。'20', '20px', '20.5px' に対応。"""
-    m = re.match(r"([\d.]+)", value.strip())
+    """font-size 属性値から数値を抽出する。'20', '20px', '20.5px' に対応。
+
+    em, rem, pt, % などの単位は非対応（Noneを返す）。
+    """
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(px)?", value.strip())
     if m:
-        return float(m.group(1))
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
     return None
 
 
@@ -104,6 +120,7 @@ def validate_svg_font_sizes(
     try:
         root = ET.fromstring(svg_content)
     except ET.ParseError:
+        logger.warning("Invalid SVG content, skipping font size validation")
         return []
 
     # viewBox または width/height から座標系サイズを取得

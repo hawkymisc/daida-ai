@@ -128,7 +128,7 @@ def _validate_audio_file(audio_path: Path) -> None:
     """音声ファイルの形式とサイズを検証する。
 
     Raises:
-        ValueError: MP3形式でない、またはサイズ超過
+        ValueError: MP3/WAV形式でない、またはサイズ超過
     """
     size = audio_path.stat().st_size
     if size > _MAX_AUDIO_SIZE_BYTES:

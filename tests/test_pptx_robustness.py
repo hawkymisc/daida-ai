@@ -102,7 +102,7 @@ class Test音声バリデーション:
         _validate_audio_file(mp3)  # 例外なし
 
     def test_WAVヘッダのファイルは通る(self, tmp_output_dir: Path):
-        wav = tmp_output_dir / "test.mp3"
+        wav = tmp_output_dir / "test.wav"
         wav.write_bytes(b"RIFF" + b"\x00" * 100)
 
         _validate_audio_file(wav)  # 例外なし

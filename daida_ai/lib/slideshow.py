@@ -653,6 +653,7 @@ def _estimate_reading_time_ms(text: str) -> float:
         cp = ord(ch)
         if (
             0x3000 <= cp <= 0x9FFF      # CJK統合漢字 + ひらがな + カタカナ
+            or 0xAC00 <= cp <= 0xD7AF   # ハングル音節
             or 0xF900 <= cp <= 0xFAFF   # CJK互換漢字
             or 0xFF00 <= cp <= 0xFFEF   # 全角記号
         ):

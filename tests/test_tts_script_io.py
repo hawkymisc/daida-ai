@@ -7,14 +7,7 @@
 import pytest
 from pathlib import Path
 
-from daida_ai.lib.talk_script import export_tts_script, load_tts_script
-
-
-# ---------------------------------------------------------------------------
-# 定数
-# ---------------------------------------------------------------------------
-
-DELIMITER_PATTERN = "--- Slide {idx:03d} ---"
+from daida_ai.lib.talk_script import export_tts_script, load_tts_script, _join_note_lines
 
 
 class Testエクスポート正常系:
@@ -264,8 +257,30 @@ class Testインポートエッジケース:
 
         notes = load_tts_script(script)
 
+        assert len(notes) == 2
         assert notes[0] == "スライド1"
         assert notes[1] == "スライド2"
+
+    def test_whitespaceのみのファイルは空リストを返す(self, tmp_output_dir: Path):
+        script = tmp_output_dir / "script.txt"
+        script.write_text("  \n\n  \t\n", encoding="utf-8")
+
+        notes = load_tts_script(script)
+
+        assert notes == []
+
+    def test_最初の区切り線より前のテキストは無視される(self, tmp_output_dir: Path):
+        """ユーザーがコメントを追加した場合の動作を文書化"""
+        script = tmp_output_dir / "script.txt"
+        script.write_text(
+            "# このファイルは読み上げテキストです\n"
+            "--- Slide 000 ---\nテスト\n",
+            encoding="utf-8",
+        )
+
+        notes = load_tts_script(script)
+
+        assert notes == ["テスト"]
 
 
 class Testインポートエラー:
@@ -289,3 +304,64 @@ class Testインポートエラー:
         notes = load_tts_script(script)
 
         assert notes == []
+
+    def test_FileNotFoundErrorにパス情報が含まれる(self, tmp_output_dir: Path):
+        with pytest.raises(FileNotFoundError, match="File not found"):
+            load_tts_script(tmp_output_dir / "nonexistent.txt")
+
+
+class Test_join_note_lines:
+    """_join_note_lines ヘルパーの直接テスト"""
+
+    def test_通常の行リストを結合する(self):
+        assert _join_note_lines(["a", "b", "c"]) == "a\nb\nc"
+
+    def test_末尾の空行を除去する(self):
+        assert _join_note_lines(["a", "b", "", ""]) == "a\nb"
+
+    def test_全て空行の場合は空文字列を返す(self):
+        assert _join_note_lines(["", "", ""]) == ""
+
+    def test_空リストは空文字列を返す(self):
+        assert _join_note_lines([]) == ""
+
+    def test_先頭の空行は保持される(self):
+        assert _join_note_lines(["", "a"]) == "\na"
+
+
+class Test区切り線衝突:
+    """ノート内容に区切り線と同じ文字列が含まれる場合（既知の制限）"""
+
+    def test_ノート内の区切り線風テキストはセクション境界として扱われる(
+        self, tmp_output_dir: Path
+    ):
+        """区切り線と同じ文字列がノート内にあるとパースが壊れる（既知の制限）"""
+        script = tmp_output_dir / "script.txt"
+        script.write_text(
+            "--- Slide 000 ---\n"
+            "テスト前\n"
+            "--- Slide 005 ---\n"
+            "テスト後\n"
+            "--- Slide 001 ---\n"
+            "次のスライド\n",
+            encoding="utf-8",
+        )
+
+        notes = load_tts_script(script)
+
+        # 区切り線風テキストがセクション境界として解釈され、3エントリになる
+        assert len(notes) == 3
+
+    def test_エクスポート時の区切り線衝突はラウンドトリップで不一致になる(
+        self, tmp_output_dir: Path
+    ):
+        """ノートに区切り線を含む場合、ラウンドトリップで元に戻らない（既知の制限）"""
+        original = ["テスト前\n--- Slide 005 ---\nテスト後"]
+        path = tmp_output_dir / "script.txt"
+
+        export_tts_script(original, path)
+        loaded = load_tts_script(path)
+
+        # ラウンドトリップで壊れることを明示的に確認
+        assert loaded != original
+        assert len(loaded) == 2  # 1つのノートが2つに分割される

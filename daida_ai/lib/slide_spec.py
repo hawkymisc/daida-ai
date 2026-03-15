@@ -15,6 +15,10 @@ CHARS_PER_SECOND = 5.0
 NOTE_EXEMPT_LAYOUTS = {"title_slide", "section_header"}
 TITLE_EXEMPT_LAYOUTS = {"blank"}
 
+MAX_TITLE_LENGTH = 100
+MAX_SUBTITLE_LENGTH = 200
+MAX_BODY_ITEM_LENGTH = 200
+
 VALID_TEMPLATES = {"tech", "casual", "formal"}
 VALID_LAYOUTS = {
     "title_slide",
@@ -158,6 +162,18 @@ def validate_slide_spec(
                     f"slide[{i}] requires a non-empty title"
                 )
 
+        # テキスト長チェック
+        if slide.title and len(slide.title) > MAX_TITLE_LENGTH:
+            raise ValueError(
+                f"slide[{i}] title exceeds {MAX_TITLE_LENGTH} chars "
+                f"(got {len(slide.title)})"
+            )
+        if slide.subtitle and len(slide.subtitle) > MAX_SUBTITLE_LENGTH:
+            raise ValueError(
+                f"slide[{i}] subtitle exceeds {MAX_SUBTITLE_LENGTH} chars "
+                f"(got {len(slide.subtitle)})"
+            )
+
         # ノート必須チェック（title_slide, section_header以外）
         if slide.layout not in NOTE_EXEMPT_LAYOUTS:
             if not slide.note or not slide.note.strip():
@@ -177,6 +193,12 @@ def validate_slide_spec(
                     f"slide[{i}] body must have at most {MAX_BODY_ITEMS} items, "
                     f"got {len(slide.body)}"
                 )
+            for j, item in enumerate(slide.body):
+                if len(item) > MAX_BODY_ITEM_LENGTH:
+                    raise ValueError(
+                        f"slide[{i}] body[{j}] exceeds {MAX_BODY_ITEM_LENGTH} chars "
+                        f"(got {len(item)})"
+                    )
 
         # 2カラムレイアウトのbody検証
         for col_name, col in [("left", slide.left), ("right", slide.right)]:

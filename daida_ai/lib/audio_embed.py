@@ -20,6 +20,16 @@ from pptx import Presentation
 from pptx.opc.package import Part, PackURI, RT
 from pptx.util import Emu
 
+# アイコンサイズとマージン定数 (EMU)
+_ICON_SIZE = Emu(304800)    # 32×32px (約0.33 inches)
+_ICON_MARGIN = Emu(228600)  # 右端・下端からのマージン (0.25 inches)
+
+def _get_slide_size(slide):
+    """スライドの幅・高さを取得する（slide_builder.pyと同パターン）。"""
+    prs = slide.part.package.presentation_part.presentation
+    return int(prs.slide_width), int(prs.slide_height)
+
+
 # OOXML名前空間
 _nsmap = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -166,11 +176,14 @@ def _add_audio_shape(
     - p:nvPr: a:audioFile (RT.AUDIO) + p14:media拡張 (RT.MEDIA)
     - p:blipFill: a:blip (RT.IMAGE, アイコン画像)
     """
-    # スライド上の位置（右下、小さいアイコン）
-    x = Emu(8229600)   # ~3.2 inches from left
-    y = Emu(5943600)   # ~2.3 inches from top
-    cx = Emu(304800)   # ~0.12 inches width
-    cy = Emu(304800)   # ~0.12 inches height
+    # スライド寸法から右下位置を動的計算（4:3/16:9いずれにも対応）
+    slide_w, slide_h = _get_slide_size(slide)
+    icon_sz = int(_ICON_SIZE)
+    margin = int(_ICON_MARGIN)
+    x = Emu(slide_w - icon_sz - margin)
+    y = Emu(slide_h - icon_sz - margin)
+    cx = _ICON_SIZE
+    cy = _ICON_SIZE
 
     shape_id = 10000 + slide_idx
 

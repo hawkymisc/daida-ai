@@ -12,7 +12,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from xml.etree import ElementTree as ET
+import defusedxml.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +94,20 @@ def _parse_font_size(value: str) -> float | None:
 
 
 def _extract_font_size_from_style(style: str) -> float | None:
-    """inline style 属性から font-size を抽出する。"""
-    m = re.search(r"font-size\s*:\s*([\d.]+)", style)
-    if m:
+    """inline style 属性から font-size を抽出する。px/unitless のみ対応。
+
+    em, rem, pt, % などの単位は非対応（Noneを返す）。
+    """
+    m = re.search(r"font-size\s*:\s*(\d+(?:\.\d+)?)\s*([a-z%]*)", style)
+    if not m:
+        return None
+    unit = m.group(2)
+    if unit and unit != "px":
+        return None
+    try:
         return float(m.group(1))
-    return None
+    except ValueError:
+        return None
 
 
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -119,7 +128,7 @@ def validate_svg_font_sizes(
     """
     try:
         root = ET.fromstring(svg_content)
-    except ET.ParseError:
+    except Exception:
         logger.warning("Invalid SVG content, skipping font size validation")
         return []
 
@@ -158,13 +167,15 @@ def validate_svg_font_sizes(
 
     violations: list[FontSizeViolation] = []
 
+    _TEXT_TAGS = {"text", "tspan", "textPath"}
+
     for elem in root.iter():
         tag = elem.tag
         if isinstance(tag, str):
             local = tag.split("}")[-1] if "}" in tag else tag
         else:
             continue
-        if local != "text":
+        if local not in _TEXT_TAGS:
             continue
 
         # font-size を取得: 属性 > inline style

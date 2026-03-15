@@ -249,3 +249,68 @@ class TestEdgeCases:
         violations = validate_svg_font_sizes(svg, is_blank=False)
         assert len(violations) == 1
         assert violations[0].font_size == 20
+
+    def test_tspan要素のfont_sizeが検出される(self):
+        svg = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text x="100" y="100"><tspan font-size="10">Small tspan</tspan></text>
+</svg>
+"""
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert len(violations) == 1
+        assert violations[0].font_size == 10
+        assert "Small tspan" in violations[0].text_content
+
+    def test_tspan_style内のfont_sizeも検出される(self):
+        svg = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text x="100" y="100"><tspan style="font-size: 15px">Tiny tspan</tspan></text>
+</svg>
+"""
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert len(violations) == 1
+        assert violations[0].font_size == 15
+
+    def test_inline_style_em単位は無視される(self):
+        svg = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text x="100" y="100" style="font-size: 1.5em">Em unit</text>
+</svg>
+"""
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert violations == []  # em は非対応 → スキップ
+
+    def test_inline_style_rem単位は無視される(self):
+        svg = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text x="100" y="100" style="font-size: 2rem">Rem unit</text>
+</svg>
+"""
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert violations == []
+
+    def test_inline_style_pt単位は無視される(self):
+        svg = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text x="100" y="100" style="font-size: 12pt">Pt unit</text>
+</svg>
+"""
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert violations == []
+
+    def test_billion_laughs_xmlは安全に処理される(self):
+        """defusedxml による XML Bomb 防御"""
+        svg = """\
+<?xml version="1.0"?>
+<!DOCTYPE bomb [
+  <!ENTITY a "1234567890">
+  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+]>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <text font-size="10">&c;</text>
+</svg>
+"""
+        # defusedxml は DTD entity expansion を拒否する → 空リスト
+        violations = validate_svg_font_sizes(svg, is_blank=False)
+        assert violations == []  # パースエラーで安全にスキップ

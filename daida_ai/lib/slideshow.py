@@ -636,8 +636,45 @@ def _estimate_note_duration_ms(slide, *, min_ms: int = _MIN_NOTE_DURATION_MS) ->
     if not stripped:
         return 0
 
-    duration_ms = int(len(stripped) / _CHARS_PER_SECOND * 1000)
+    duration_ms = int(_estimate_reading_time_ms(stripped))
     return max(min_ms, min(duration_ms, _MAX_NOTE_DURATION_MS))
+
+
+def _estimate_reading_time_ms(text: str) -> float:
+    """テキストの発話時間を推定する（ミリ秒）。
+
+    CJK文字（日本語・中国語・韓国語）とLatin文字で異なるレートを適用:
+    - CJK: 約5文字/秒（300文字/分）
+    - Latin: 約15文字/秒（単語あたり約5文字 × 180wpm = 900文字/分）
+    """
+    cjk_count = 0
+    latin_count = 0
+    for ch in text:
+        cp = ord(ch)
+        if (
+            0x3000 <= cp <= 0x9FFF      # CJK統合漢字 + ひらがな + カタカナ
+            or 0xAC00 <= cp <= 0xD7AF   # ハングル音節
+            or 0xF900 <= cp <= 0xFAFF   # CJK互換漢字
+            or 0xFF00 <= cp <= 0xFFEF   # 全角記号
+        ):
+            cjk_count += 1
+        elif ch.isalnum():
+            latin_count += 1
+        # 記号・空白は計算に含めない
+
+    cjk_rate = 5.0   # CJK文字/秒
+    latin_rate = 15.0  # Latin文字/秒
+
+    cjk_time = cjk_count / cjk_rate if cjk_count else 0
+    latin_time = latin_count / latin_rate if latin_count else 0
+
+    classified = cjk_count + latin_count
+    if classified > 0:
+        # 分類できた文字がある場合はCJK+Latinレートで計算
+        return (cjk_time + latin_time) * 1000
+    else:
+        # 記号のみ等、分類できない場合はフォールバック
+        return len(text) / _CHARS_PER_SECOND * 1000
 
 
 def _find_audio_shape_ids(slide) -> list[int]:

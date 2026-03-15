@@ -24,6 +24,13 @@ from pptx.util import Emu
 _ICON_SIZE = Emu(304800)    # 32×32px (約0.33 inches)
 _ICON_MARGIN = Emu(228600)  # 右端・下端からのマージン (0.25 inches)
 
+# 音声ファイルバリデーション定数
+_MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
+_MP3_SYNC_BYTES = b"\xff\xfb"  # MPEG1 Layer3
+_MP3_SYNC_BYTES_ALT = b"\xff\xf3"  # MPEG2 Layer3
+_ID3_HEADER = b"ID3"
+_WAV_HEADER = b"RIFF"
+
 def _get_slide_size(slide):
     """スライドの幅・高さを取得する（slide_builder.pyと同パターン）。"""
     prs = slide.part.package.presentation_part.presentation
@@ -108,12 +115,41 @@ def embed_audio_to_pptx(
         if not audio_path.exists():
             continue
 
+        _validate_audio_file(audio_path)
         _embed_audio_in_slide(prs, slide, audio_path, i)
         count += 1
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
     return count
+
+
+def _validate_audio_file(audio_path: Path) -> None:
+    """音声ファイルの形式とサイズを検証する。
+
+    Raises:
+        ValueError: MP3/WAV形式でない、またはサイズ超過
+    """
+    size = audio_path.stat().st_size
+    if size > _MAX_AUDIO_SIZE_BYTES:
+        raise ValueError(
+            f"Audio file too large: {audio_path.name} "
+            f"({size / 1024 / 1024:.1f}MB > {_MAX_AUDIO_SIZE_BYTES / 1024 / 1024:.0f}MB)"
+        )
+    if size < 4:
+        raise ValueError(f"Audio file too small: {audio_path.name} ({size} bytes)")
+
+    header = audio_path.read_bytes()[:4]
+    is_valid = (
+        header[:2] in (_MP3_SYNC_BYTES, _MP3_SYNC_BYTES_ALT)
+        or header[:3] == _ID3_HEADER
+        or header[:4] == _WAV_HEADER
+    )
+    if not is_valid:
+        raise ValueError(
+            f"Not a valid audio file: {audio_path.name} "
+            f"(header: {header.hex()}, expected MP3 or WAV)"
+        )
 
 
 def _embed_audio_in_slide(prs, slide, audio_path: Path, slide_idx: int) -> None:

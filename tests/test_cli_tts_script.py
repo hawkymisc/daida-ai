@@ -110,3 +110,57 @@ class Testエクスポートインポート統合:
         assert results[0] is not None
         assert results[1] is not None
         assert results[2] is None  # 空ノートはスキップ
+
+
+class Test辞書適用統合:
+    """読み辞書を適用したエクスポートの統合テスト"""
+
+    def test_辞書適用でエクスポート時に自動置換される(
+        self, pptx_with_notes: Path, tmp_output_dir: Path
+    ):
+        notes = read_notes(pptx_with_notes)
+        script_path = tmp_output_dir / "tts_script.txt"
+        dict_entries = [("生成", "せいせい"), ("Claude", "クロード")]
+
+        export_tts_script(notes, script_path, dict_entries=dict_entries)
+        loaded = load_tts_script(script_path)
+
+        assert loaded[0] == "せいせいAIの話"
+        assert loaded[1] == "クロードの紹介"
+        assert loaded[2] == ""  # 空ノートは空のまま
+
+    def test_辞書なしなら従来通りエクスポートされる(
+        self, pptx_with_notes: Path, tmp_output_dir: Path
+    ):
+        notes = read_notes(pptx_with_notes)
+        script_path = tmp_output_dir / "tts_script.txt"
+
+        export_tts_script(notes, script_path, dict_entries=None)
+        loaded = load_tts_script(script_path)
+
+        assert loaded == notes
+
+    def test_辞書ファイルからロードして適用する一連フロー(
+        self, pptx_with_notes: Path, tmp_output_dir: Path
+    ):
+        from daida_ai.lib.pronunciation_dict import load_dict
+
+        # 辞書ファイル作成
+        dict_path = tmp_output_dir / "dict.tsv"
+        dict_path.write_text(
+            "# 読み辞書\n"
+            "生成\tせいせい\n"
+            "Claude\tクロード\n",
+            encoding="utf-8",
+        )
+
+        # ロード → エクスポート → 確認
+        entries = load_dict(dict_path)
+        notes = read_notes(pptx_with_notes)
+        script_path = tmp_output_dir / "tts_script.txt"
+
+        export_tts_script(notes, script_path, dict_entries=entries)
+        loaded = load_tts_script(script_path)
+
+        assert "せいせい" in loaded[0]
+        assert "クロード" in loaded[1]

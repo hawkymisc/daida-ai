@@ -508,8 +508,14 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh write_talk_script.py output/presentation
 ### Step 4a: TTSスクリプトのエクスポート
 
 スピーカーノートを読み上げ用テキストファイルとしてエクスポートする。
-ユーザーが読みを確認・修正できるようにするためのステップ。
+読み辞書（`--dict`）を指定すると、頻出の誤読パターンが自動置換される。
 
+読み辞書あり（推奨）:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh export_tts_script.py output/presentation.pptx output/tts_script.txt --dict ${CLAUDE_SKILL_DIR}/assets/pronunciation_dict.tsv
+```
+
+読み辞書なし:
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh export_tts_script.py output/presentation.pptx output/tts_script.txt
 ```
@@ -517,14 +523,17 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh export_tts_script.py output/presentation
 ### Step 4b: 読み上げテキストの確認・修正
 
 エクスポートしたスクリプトファイルの内容をユーザーに提示する。
-TTSが誤った読みを生成しやすい箇所（固有名詞、英語、専門用語）がないか確認を促す。
+辞書で自動修正されなかった箇所や、プロジェクト固有の用語がないか確認を促す。
 
-**よくある読み誤りの例:**
-- 「生成」→「せいしげる」（人名と誤認） → 修正: 「せいせい」
-- 「Claude」→「クローダ」 → 修正: 「クロード」
-- 「LLM」→「エルエルエム」 → 必要に応じひらがな/カタカナに修正
+**辞書で自動修正される例:**
+- 「生成」→「せいせい」、「Claude」→「クロード」、「LLM」→「エルエルエム」
+
+**手動修正が必要な場合:**
+- プロジェクト固有の略語やプロダクト名
+- 辞書に未登録の専門用語
 
 ユーザーが修正不要と判断した場合はStep 4cへ進む（`--script`なしで従来通り合成）。
+辞書に追加すべきエントリがあれば `pronunciation_dict.tsv` を更新する。
 
 ### Step 4c: スクリプト実行
 

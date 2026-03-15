@@ -78,13 +78,35 @@ def _calc_image_area(slide_w: int, slide_h: int, *, is_blank: bool = False):
     return max_w, max_h, top
 
 
-def _convert_svg(svg_path: Path, original_path: str) -> Path:
+def _convert_svg(svg_path: Path, original_path: str, *, is_blank: bool = False) -> Path:
     """SVGをPNGに変換し、一時ファイルのPathを返す。
+
+    変換前にフォントサイズのバリデーションを実行し、
+    PPTX上で12pt未満になるテキストがあれば警告を出す。
 
     Raises:
         FileNotFoundError: cairosvg未インストール or 変換失敗時
     """
-    from daida_ai.lib.svg_convert import convert_svg_to_png, SVGConversionError
+    import warnings
+
+    from daida_ai.lib.svg_convert import (
+        convert_svg_to_png,
+        SVGConversionError,
+        validate_svg_font_sizes,
+    )
+
+    # フォントサイズ検証
+    try:
+        svg_content = svg_path.read_text(encoding="utf-8")
+        violations = validate_svg_font_sizes(svg_content, is_blank=is_blank)
+        for v in violations:
+            warnings.warn(
+                f"SVG font too small in {original_path}: {v}",
+                UserWarning,
+                stacklevel=2,
+            )
+    except Exception:
+        pass  # バリデーション失敗は変換をブロックしない
 
     try:
         png_path = convert_svg_to_png(str(svg_path))
@@ -120,7 +142,7 @@ def _insert_image(slide, image_path: str, *, is_blank: bool = False, base_dir: P
     # SVG自動変換: .svg ファイルを検出し、PNGに変換してから挿入
     temp_png = None
     if path.suffix.lower() == ".svg":
-        path = _convert_svg(path, image_path)
+        path = _convert_svg(path, image_path, is_blank=is_blank)
         temp_png = path
 
     try:

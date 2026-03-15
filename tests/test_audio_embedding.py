@@ -265,36 +265,103 @@ class Testアイコン配置:
         "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     }
 
-    def test_アイコンがスライド右下に配置される(
+    def _find_audio_pic(self, slide):
+        """スライドXMLから音声シェイプのp:pic要素を取得する。"""
+        pics = slide.element.findall(".//p:pic", self._ns)
+        for pic in pics:
+            if pic.find(".//a:audioFile", self._ns) is not None:
+                return pic
+        return None
+
+    def _get_icon_xfrm(self, slide):
+        """音声アイコンの位置(x, y)とサイズ(cx, cy)を取得する。"""
+        audio_pic = self._find_audio_pic(slide)
+        assert audio_pic is not None, "音声シェイプが見つかりません"
+        off = audio_pic.find(".//a:off", self._ns)
+        assert off is not None, "a:off要素が見つかりません"
+        ext = audio_pic.find(".//a:ext", self._ns)
+        assert ext is not None, "a:ext要素が見つかりません"
+        return (
+            int(off.get("x")), int(off.get("y")),
+            int(ext.get("cx")), int(ext.get("cy")),
+        )
+
+    def test_アイコン位置が右下の正確な座標である(
         self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
     ):
-        """16:9スライドでもアイコンが右下隅にあること"""
+        """デフォルトスライドでアイコンが正確な右下座標に配置されること"""
         output = tmp_output_dir / "output.pptx"
         embed_audio_to_pptx(pptx_path, audio_dir, output)
 
         prs = Presentation(str(output))
-        slide = prs.slides[0]
         slide_w = int(prs.slide_width)
         slide_h = int(prs.slide_height)
 
-        pics = slide.element.findall(".//p:pic", self._ns)
-        audio_pic = None
-        for pic in pics:
-            if pic.find(".//a:audioFile", self._ns) is not None:
-                audio_pic = pic
-                break
-        assert audio_pic is not None
+        x, y, cx, cy = self._get_icon_xfrm(prs.slides[0])
 
-        off = audio_pic.find(".//a:off", self._ns)
-        assert off is not None, "a:off要素が見つかりません"
-        x = int(off.get("x"))
-        y = int(off.get("y"))
+        # _ICON_SIZE=304800, _ICON_MARGIN=228600
+        expected_x = slide_w - 304800 - 228600
+        expected_y = slide_h - 304800 - 228600
+        assert x == expected_x, f"x={x}, expected={expected_x}"
+        assert y == expected_y, f"y={y}, expected={expected_y}"
 
-        # アイコンはスライド右端から1インチ(914400 EMU)以内にあるべき
-        assert x > slide_w - 914400, (
-            f"x={x} はスライド右端({slide_w})から遠すぎる"
-        )
-        # アイコンはスライド下端から1インチ以内にあるべき
-        assert y > slide_h - 914400, (
-            f"y={y} はスライド下端({slide_h})から遠すぎる"
-        )
+    def test_アイコンサイズは304800x304800である(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """アイコンのcx/cyが_ICON_SIZE(304800 EMU)であること"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        _, _, cx, cy = self._get_icon_xfrm(prs.slides[0])
+
+        assert cx == 304800, f"cx={cx}, expected=304800"
+        assert cy == 304800, f"cy={cy}, expected=304800"
+
+    def test_4対3スライドでもアイコンが右下に配置される(
+        self, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """4:3スライド(10"×7.5")でもアイコンが正確な右下座標に配置されること"""
+        from pptx.util import Inches
+
+        # 4:3のPPTXを作成
+        prs = Presentation()
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(7.5)
+        layout = prs.slide_layouts[0]
+        prs.slides.add_slide(layout)
+        pptx_path_43 = tmp_output_dir / "test_4_3.pptx"
+        prs.save(str(pptx_path_43))
+
+        # 音声ファイルを用意
+        audio_43 = tmp_output_dir / "audio_43"
+        audio_43.mkdir()
+        (audio_43 / "slide_000.mp3").write_bytes(DUMMY_MP3_BYTES)
+
+        output = tmp_output_dir / "output_4_3.pptx"
+        embed_audio_to_pptx(pptx_path_43, audio_43, output)
+
+        prs = Presentation(str(output))
+        slide_w = int(prs.slide_width)
+        slide_h = int(prs.slide_height)
+
+        x, y, cx, cy = self._get_icon_xfrm(prs.slides[0])
+
+        expected_x = slide_w - 304800 - 228600
+        expected_y = slide_h - 304800 - 228600
+        assert x == expected_x, f"x={x}, expected={expected_x}"
+        assert y == expected_y, f"y={y}, expected={expected_y}"
+
+    def test_複数スライドで同じ位置に配置される(
+        self, pptx_path: Path, audio_dir: Path, tmp_output_dir: Path
+    ):
+        """スライド0とスライド2で同じアイコン位置であること"""
+        output = tmp_output_dir / "output.pptx"
+        embed_audio_to_pptx(pptx_path, audio_dir, output)
+
+        prs = Presentation(str(output))
+        x0, y0, _, _ = self._get_icon_xfrm(prs.slides[0])
+        x2, y2, _, _ = self._get_icon_xfrm(prs.slides[2])
+
+        assert x0 == x2, f"slide0 x={x0} != slide2 x={x2}"
+        assert y0 == y2, f"slide0 y={y0} != slide2 y={y2}"

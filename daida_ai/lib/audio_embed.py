@@ -24,6 +24,12 @@ from pptx.util import Emu
 _ICON_SIZE = Emu(304800)    # 32×32px (約0.33 inches)
 _ICON_MARGIN = Emu(228600)  # 右端・下端からのマージン (0.25 inches)
 
+def _get_slide_size(slide):
+    """スライドの幅・高さを取得する（slide_builder.pyと同パターン）。"""
+    prs = slide.part.package.presentation_part.presentation
+    return int(prs.slide_width), int(prs.slide_height)
+
+
 # OOXML名前空間
 _nsmap = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -151,12 +157,11 @@ def _embed_audio_in_slide(prs, slide, audio_path: Path, slide_idx: int) -> None:
         RT.HYPERLINK, "ppaction://media"
     )
 
-    # 5. スライドXMLに音声シェイプを追加（slide渡しで動的位置計算）
-    _add_audio_shape(prs, slide, r_id_audio, r_id_media, r_id_icon, r_id_hlink, slide_idx)
+    # 5. スライドXMLに音声シェイプを追加
+    _add_audio_shape(slide, r_id_audio, r_id_media, r_id_icon, r_id_hlink, slide_idx)
 
 
 def _add_audio_shape(
-    prs,
     slide,
     r_id_audio: str,
     r_id_media: str,
@@ -172,8 +177,7 @@ def _add_audio_shape(
     - p:blipFill: a:blip (RT.IMAGE, アイコン画像)
     """
     # スライド寸法から右下位置を動的計算（4:3/16:9いずれにも対応）
-    slide_w = int(prs.slide_width)
-    slide_h = int(prs.slide_height)
+    slide_w, slide_h = _get_slide_size(slide)
     icon_sz = int(_ICON_SIZE)
     margin = int(_ICON_MARGIN)
     x = Emu(slide_w - icon_sz - margin)

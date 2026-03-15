@@ -155,17 +155,34 @@ class TestSVGContent:
 
         豆腐判定: sans-serif のみで変換した PNG と比較して画素が異なることを確認する。
         (sans-serif → Noto Sans → CJKグリフなし → 豆腐 が既知の状態)
+
+        環境依存注記: このテストは「sans-serif が CJK グリフなしフォントに解決される」
+        かつ「注入フォント（Hiragino 等）が利用可能」な環境でのみ意味を持つ。
+        どちらかの条件が満たされない場合（CI 等）は skip される。
         """
+        import shutil
         from PIL import Image
 
-        svg_sans = """\
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
-  <rect width="400" height="200" fill="#1E293B"/>
-  <text x="200" y="110" text-anchor="middle" fill="white"
-        font-size="40" font-family="sans-serif">日本語テスト</text>
-</svg>
-"""
-        svg_japanese = """\
+        # fc-match で sans-serif の解決先を確認 — CJK フォントに解決される環境では skip
+        fc_match = shutil.which("fc-match")
+        if fc_match is None:
+            pytest.skip("fontconfig (fc-match) が利用できないため skip")
+
+        import subprocess
+        sans_font = subprocess.run(
+            ["fc-match", "sans-serif", "--format=%{family}"],
+            capture_output=True, text=True,
+        ).stdout.strip().lower()
+        jp_font = subprocess.run(
+            ["fc-match", "sans-serif:lang=ja", "--format=%{family}"],
+            capture_output=True, text=True,
+        ).stdout.strip().lower()
+        if sans_font == jp_font:
+            pytest.skip(
+                f"sans-serif が既に日本語フォント ({jp_font}) に解決されるため skip"
+            )
+
+        svg_content = """\
 <svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
   <rect width="400" height="200" fill="#1E293B"/>
   <text x="200" y="110" text-anchor="middle" fill="white"
@@ -174,7 +191,7 @@ class TestSVGContent:
 """
         # 修正前: font-family="sans-serif" のみ (豆腐の基準)
         svg_tofu_path = tmp_path / "tofu.svg"
-        svg_tofu_path.write_text(svg_sans, encoding="utf-8")
+        svg_tofu_path.write_text(svg_content, encoding="utf-8")
         png_tofu = tmp_path / "tofu.png"
 
         import daida_ai.lib.svg_convert as mod
@@ -187,14 +204,13 @@ class TestSVGContent:
 
         # 修正後: inject_japanese_fonts が適用された状態
         svg_fixed_path = tmp_path / "fixed.svg"
-        svg_fixed_path.write_text(svg_japanese, encoding="utf-8")
+        svg_fixed_path.write_text(svg_content, encoding="utf-8")
         png_fixed = tmp_path / "fixed.png"
         convert_svg_to_png(str(svg_fixed_path), str(png_fixed))
 
-        # 豆腐PNGと修正後PNGは異なるはず
-        tofu_data = list(Image.open(png_tofu).convert("RGB").getdata())
-        fixed_data = list(Image.open(png_fixed).convert("RGB").getdata())
-        assert tofu_data != fixed_data, "日本語フォントが注入されず豆腐になっています"
+        tofu_pixels = list(Image.open(png_tofu).convert("RGB").getdata())
+        fixed_pixels = list(Image.open(png_fixed).convert("RGB").getdata())
+        assert tofu_pixels != fixed_pixels, "日本語フォントが注入されず豆腐になっています"
 
     def test_16_9アスペクト比のSVG(self, tmp_path):
         """スライド全面用の16:9 SVG"""
@@ -275,3 +291,25 @@ class TestInjectJapaneseFonts:
         svg = '<text font-family="Arial, sans-serif">テスト</text>'
         result = inject_japanese_fonts(svg)
         assert "Hiragino" in result
+
+    def test_styleブロック内のfont_familyは変更しない(self):
+        """<style> ブロック内の @font-face font-family 宣言は変更しない"""
+        svg = (
+            '<style>.x { font-family: sans-serif; }</style>'
+            '<text font-family="sans-serif">テスト</text>'
+        )
+        result = inject_japanese_fonts(svg)
+        # <style> 内は変更しない
+        assert '<style>.x { font-family: sans-serif; }</style>' in result
+        # <text> 属性には注入される
+        assert 'Hiragino' in result.split('</style>')[1]
+
+    def test_at_font_face宣言のfont_familyは変更しない(self):
+        """@font-face ブロック内の font-family フェース名は変更しない"""
+        svg = (
+            '<style>@font-face { font-family: "MyFont"; src: url(foo.ttf); }</style>'
+            '<text font-family="sans-serif">テスト</text>'
+        )
+        result = inject_japanese_fonts(svg)
+        assert '"MyFont"' in result  # フェース名が壊れていない
+        assert 'Hiragino' in result.split('</style>')[1]

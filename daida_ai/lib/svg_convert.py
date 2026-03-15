@@ -228,6 +228,11 @@ def inject_japanese_fonts(svg_content: str) -> str:
     対応箇所:
     - font-family="..." 属性 (ダブル/シングルクォート)
     - style="... font-family: ...; ..." インラインスタイル
+
+    非対応（意図的）:
+    - <style> ブロック内の @font-face { font-family: ... } — フェース名宣言への
+      誤注入を避けるため、<style> ブロックは変更しない。
+      このプロジェクトが生成するSVGは <style> ブロックを使わないため問題ない。
     """
     def _needs_injection(families: str) -> bool:
         return not any(kw in families.lower() for kw in _JP_FONT_KEYWORDS)
@@ -241,16 +246,26 @@ def inject_japanese_fonts(svg_content: str) -> str:
 
     def _rewrite_style(m: re.Match) -> str:
         prop_name = m.group(1)
-        families = m.group(2)
+        families = m.group(2).rstrip()
         if not _needs_injection(families):
             return m.group(0)
         return f'{prop_name}{_JP_FONT_FALLBACK}{families}'
+
+    # <style> ブロックを一時的にプレースホルダに退避して正規表現の誤爆を防ぐ
+    style_blocks: list[str] = []
+
+    def _stash_style(m: re.Match) -> str:
+        style_blocks.append(m.group(0))
+        return f'__STYLE_BLOCK_{len(style_blocks) - 1}__'
+
+    result = re.sub(r'<style[^>]*>.*?</style>', _stash_style, svg_content,
+                    flags=re.DOTALL | re.IGNORECASE)
 
     # font-family="..." 属性
     result = re.sub(
         r'font-family=(["\'])([^"\']+)\1',
         _rewrite_attr,
-        svg_content,
+        result,
     )
     # style="... font-family: ...; ..." インラインスタイル
     result = re.sub(
@@ -258,6 +273,11 @@ def inject_japanese_fonts(svg_content: str) -> str:
         _rewrite_style,
         result,
     )
+
+    # 退避した <style> ブロックを復元
+    for i, block in enumerate(style_blocks):
+        result = result.replace(f'__STYLE_BLOCK_{i}__', block)
+
     return result
 
 
@@ -300,10 +320,14 @@ def convert_svg_to_png(
     try:
         svg_bytes = path.read_bytes()
         if _inject_japanese_fonts_enabled:
-            svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8", errors="replace"))
+            # このプロジェクトが生成するSVGは常にUTF-8。
+            # bytestring でフォント注入済みSVGを渡しつつ、url を base URI として
+            # 同時指定することで相対パス（<image href="..."> 等）の解決を維持する。
+            svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8"))
             svg_bytes = svg_text.encode("utf-8")
         _cairosvg.svg2png(
             bytestring=svg_bytes,
+            url=str(path.resolve()),
             write_to=output_path,
             scale=scale,
         )

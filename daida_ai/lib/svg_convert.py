@@ -251,12 +251,15 @@ def inject_japanese_fonts(svg_content: str) -> str:
             return m.group(0)
         return f'{prop_name}{_JP_FONT_FALLBACK}{families}'
 
-    # <style> ブロックを一時的にプレースホルダに退避して正規表現の誤爆を防ぐ
+    # <style> ブロックを一時的にプレースホルダに退避して正規表現の誤爆を防ぐ。
+    # UUID をセッション固有のプレフィックスとして使い、SVG内容との衝突を防ぐ。
+    import uuid
+    _session_id = uuid.uuid4().hex
     style_blocks: list[str] = []
 
     def _stash_style(m: re.Match) -> str:
         style_blocks.append(m.group(0))
-        return f'__STYLE_BLOCK_{len(style_blocks) - 1}__'
+        return f'__SVG_STYLE_{_session_id}_{len(style_blocks) - 1}__'
 
     result = re.sub(r'<style[^>]*>.*?</style>', _stash_style, svg_content,
                     flags=re.DOTALL | re.IGNORECASE)
@@ -276,7 +279,7 @@ def inject_japanese_fonts(svg_content: str) -> str:
 
     # 退避した <style> ブロックを復元
     for i, block in enumerate(style_blocks):
-        result = result.replace(f'__STYLE_BLOCK_{i}__', block)
+        result = result.replace(f'__SVG_STYLE_{_session_id}_{i}__', block)
 
     return result
 
@@ -323,8 +326,15 @@ def convert_svg_to_png(
             # このプロジェクトが生成するSVGは常にUTF-8。
             # bytestring でフォント注入済みSVGを渡しつつ、url を base URI として
             # 同時指定することで相対パス（<image href="..."> 等）の解決を維持する。
-            svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8"))
-            svg_bytes = svg_text.encode("utf-8")
+            # UTF-8以外のSVGは稀なケースとして注入をスキップし、元バイト列をそのまま使う。
+            try:
+                svg_text = inject_japanese_fonts(svg_bytes.decode("utf-8"))
+                svg_bytes = svg_text.encode("utf-8")
+            except UnicodeDecodeError:
+                logger.warning(
+                    "SVG is not valid UTF-8; skipping Japanese font injection: %s",
+                    svg_path,
+                )
         _cairosvg.svg2png(
             bytestring=svg_bytes,
             url=str(path.resolve()),

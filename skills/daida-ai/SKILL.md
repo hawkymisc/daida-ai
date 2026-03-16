@@ -3,13 +3,16 @@ name: daida-ai
 description: >
   登壇プレゼン資料を自動生成するスキル（LT〜30分講演まで対応）。
   テーマからアウトライン作成、PowerPoint/ODPスライド生成、
-  トークスクリプト（台本）の記入、音声合成、音声埋め込みまで一括対応。
+  トークスクリプト（台本）の記入、音声合成、音声埋め込み、
+  MP4動画エクスポートまで一括対応。
   使用場面: (1) 登壇テーマからプレゼンを一括作成したい,
   (2) 既存アウトラインからスライドを作りたい,
   (3) スライドにトークスクリプトを追加したい,
-  (4) スクリプトから音声を合成してスライドに埋め込みたい。
+  (4) スクリプトから音声を合成してスライドに埋め込みたい,
+  (5) プレゼンを動画としてエクスポートしたい。
   トリガー: LT, ライトニングトーク, プレゼン作成, スライド作成,
-  代打, 登壇, presentation, slides, talk script, 音声合成, 講演。
+  代打, 登壇, presentation, slides, talk script, 音声合成, 講演,
+  動画, MP4, video。
 ---
 
 # 代打AI — 登壇プレゼン自動生成スキル
@@ -17,6 +20,9 @@ description: >
 ## 概要
 
 テーマ入力から完成プレゼンまでの一連のパイプラインを実行する。
+Step 6（スライドショー設定）までで **PPTX として完成** する。
+さらに Step 7 で **MP4動画としてもエクスポート可能** だが、追加の外部ツール（LibreOffice, ffmpeg）が必要。
+動画が不要なユーザーも多いため、**Step 6 完了後に動画も作るか確認し、不要なら Step 7 はスキップすること。**
 
 ## ヘルプ表示
 
@@ -45,11 +51,16 @@ description: >
 ║     │                                                        ║
 ║     ▼                                                        ║
 ║  完成！    presentation_final.pptx                           ║
+║     │                                                        ║
+║  Step 7    MP4 動画エクスポート ────── オプション            ║
+║     │       (自動バリデーション付き)                          ║
+║     ▼                                                        ║
+║  動画！    presentation.mp4                                  ║
 ║                                                              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  テンプレート: tech / casual / formal                        ║
 ║  TTS: edge (デフォルト) / voicevox                           ║
-║  出力: PPTX / ODP (変換オプション)                           ║
+║  出力: PPTX / ODP (変換オプション) / MP4 (動画オプション)    ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
@@ -57,6 +68,7 @@ description: >
 - 全ステップを自動実行するか、任意のステップから再開できる
 - `↕` マークのステップではユーザーが手動修正して戻れる
 - Step 1.7（画像生成）と Step 3（スクリプト更新）はオプション
+- Step 7（動画エクスポート）もオプション。追加ツール（LibreOffice, ffmpeg）が必要で、動画が不要ならスキップしてOK
 
 ## 前提条件
 
@@ -64,6 +76,10 @@ description: >
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh
 ```
+
+`setup.sh` は Python 依存パッケージのインストール後、動画生成ツール（LibreOffice, ffmpeg, pdftoppm）の可用性を自動チェックする。
+出力に `[--]` のツールがある場合、**ユーザーが動画出力を希望していれば** インストール手順を案内すること。
+動画が不要と確認済みなら、ツール未検出の警告は無視してよい。
 
 ## スクリプト実行の共通パターン
 
@@ -80,6 +96,19 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh <script_name.py> [args...]
 2. **ステップ指定**: 特定のステップから開始（既存ファイルを利用）
 
 出力ディレクトリはユーザーに確認する（デフォルト: `./output/`）
+
+### 動画出力の確認
+
+ワークフロー開始時に、**MP4動画も必要か** を確認する。
+**AskUserQuestion ツールが利用可能な場合は、必ずそれを使って確認すること。**
+
+> PPTXの完成後、MP4動画としてもエクスポートできます（Step 7）。
+> 動画が必要な場合は LibreOffice と ffmpeg のインストールが必要です。
+> 動画も作りますか？（不要ならスキップします）
+
+- **「はい」「動画も」「MP4も」** → Step 7 まで実行する。`setup.sh` 実行時にツールの可用性を確認する
+- **「いいえ」「不要」「PPTXだけ」** → Step 6 で完了。Step 7 への案内もスキップする
+- **未回答・曖昧** → Step 6 完了時に改めて確認する（Step 6 の案内セクション参照）
 
 ### ステップ再開・割り込み
 
@@ -102,6 +131,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh <script_name.py> [args...]
 | Step 4 | `output/presentation.pptx` | スクリプトを変更した / 読みを修正したい |
 | Step 5 | `output/presentation.pptx` + `output/audio/` | 音声を差し替えた |
 | Step 6 | `output/presentation_with_audio.pptx` | 音声埋め込み済みPPTXを修正した |
+| Step 7 | `output/presentation_final.pptx` + `output/audio/` | 動画を再生成したい |
 
 **よくある割り込みパターン:**
 
@@ -110,6 +140,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh <script_name.py> [args...]
 - **「スライドの内容を変えたい」** → Step 1.5 から再開（JSON修正 → Step 2以降）
 - **「テンプレートを変えたい」** → Step 1.5 の metadata.template を変更 → Step 2 から再開
 - **「音声エンジンを変えたい」** → Step 4 から再開（`--engine` 変更）
+- **「動画だけ再生成したい」** → Step 7 から再開
 
 ---
 
@@ -677,6 +708,88 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_slideshow.py output/presentation_wi
 >
 > **LibreOffice Impress の場合:**
 > 自動ページ送りは動作しません。スライドショー中は**手動でスライドを送ってください**（クリックまたは矢印キー）。音声は各スライドで自動再生されます。
+
+### Step 7 への案内（必須）
+
+Step 6 の案内に続けて、**必ず以下を確認すること**:
+
+> このプレゼンをMP4動画としてもエクスポートできます。
+> YouTube等への投稿や、PowerPointが使えない環境での共有に便利です。
+> ただし追加ツール（LibreOffice, ffmpeg）のインストールが必要です。
+> 動画が不要であればここで完了です。動画も作りますか？
+
+ユーザーが「不要」「いらない」等と回答した場合は **Step 7 をスキップ** してパイプラインを終了する。
+
+---
+
+## Step 7: MP4動画エクスポート（オプション）
+
+PPTXと音声ファイルからMP4動画を生成する。
+スライドショーを動画として配布・共有したい場合に実行する。
+
+### ユーザーに確認する
+
+Step 7 への案内でユーザーが「動画を作る」と回答した場合、以下を確認する:
+- 動画のフレームレート（デフォルト: 30fps）
+- 音声なしスライドの表示秒数（デフォルト: 3秒）
+
+### 前提条件
+
+動画生成には追加ツールが必要。`setup.sh` 実行時に可用性が表示される。
+
+| ツール | 用途 | 必須 |
+|--------|------|------|
+| LibreOffice | PPTX → PDF → PNG レンダリング | ✅ |
+| ffmpeg | 動画クリップ生成・結合 | ✅ |
+| pdftoppm (poppler-utils) | PDF → PNG 変換（高品質） | 推奨（ffmpegで代替可） |
+
+未インストールの場合:
+```bash
+# Ubuntu/Debian
+sudo apt install libreoffice ffmpeg poppler-utils
+
+# macOS
+brew install libreoffice ffmpeg poppler
+```
+
+**snap版LibreOfficeの注意**: 出力ディレクトリは `$HOME` 配下を使用すること。
+`/tmp` 等への書き込みはサンドボックス制限で失敗する場合がある。
+
+### スクリプト実行
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_video.py output/presentation_final.pptx output/audio output/presentation.mp4
+```
+
+オプション指定:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh make_video.py output/presentation_final.pptx output/audio output/presentation.mp4 --fps 30 --silent-duration 3.0
+```
+
+### 自動バリデーション
+
+生成後、以下のチェックが自動実行される:
+
+| チェック項目 | 内容 |
+|-------------|------|
+| ファイル存在 | MP4ファイルが存在し、サイズ > 0 |
+| ffprobe読取 | ファイルが破損していないこと |
+| コーデック | 映像: H.264 / 音声: AAC |
+| 解像度 | 幅・高さが偶数（libx264互換） |
+| デュレーション | 正の値であること |
+
+バリデーション失敗時はエラー詳細が表示される。`--skip-validation` で無効化可能。
+
+### ユーザーへの案内
+
+動画生成完了後、以下を伝える:
+
+> **動画出力について**
+>
+> - `presentation.mp4` が生成されました
+> - 各スライドの表示時間は音声ファイルの実尺に基づいています
+> - 音声なしスライドはデフォルト3秒表示です
+> - 一般的な動画プレイヤー（VLC、QuickTime等）で再生できます
 
 ---
 

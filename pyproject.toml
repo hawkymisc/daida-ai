@@ -32,3 +32,6 @@ daida_ai = ["assets/*.pptx"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests requiring external tools (ffmpeg, LibreOffice)",
+]

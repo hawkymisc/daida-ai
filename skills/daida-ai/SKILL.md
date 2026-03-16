@@ -95,7 +95,8 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh <script_name.py> [args...]
 
 ### 動画出力の確認
 
-ワークフロー開始時に、**MP4動画も必要か** を確認する:
+ワークフロー開始時に、**MP4動画も必要か** を確認する。
+**AskUserQuestion ツールが利用可能な場合は、必ずそれを使って確認すること。**
 
 > PPTXの完成後、MP4動画としてもエクスポートできます（Step 7）。
 > 動画が必要な場合は LibreOffice と ffmpeg のインストールが必要です。

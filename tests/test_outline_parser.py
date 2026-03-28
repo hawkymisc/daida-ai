@@ -74,12 +74,12 @@ class TestParseOutline:
         assert len(section1.items) == 4
 
     def test_空文字列はValueErrorを送出する(self):
-        with pytest.raises(ValueError, match="アウトラインが空です"):
+        with pytest.raises(ValueError, match="Outline is empty"):
             parse_outline("")
 
     def test_タイトルなしはValueErrorを送出する(self):
         md = "## セクションだけ\n- 項目\n"
-        with pytest.raises(ValueError, match="タイトル.*見つかりません"):
+        with pytest.raises(ValueError, match="Title.*heading not found"):
             parse_outline(md)
 
     def test_非常に長いタイトルも処理できる(self):
@@ -190,7 +190,7 @@ class TestA3エッジケース耐性:
 
     def test_前後スペースのみの入力(self):
         """空白のみはstrip()後に空になるのでValueError"""
-        with pytest.raises(ValueError, match="空"):
+        with pytest.raises(ValueError, match="empty"):
             parse_outline("   \t\n   ")
 
 

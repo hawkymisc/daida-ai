@@ -78,7 +78,7 @@ class TestWriteNotes:
     def test_ノート数がスライド数と異なるとValueError(
         self, pptx_with_notes: Path
     ):
-        with pytest.raises(ValueError, match="スライド数.*一致しません"):
+        with pytest.raises(ValueError, match="Slide count.*does not match"):
             write_notes(pptx_with_notes, ["only one"], pptx_with_notes)
 
     def test_空文字ノートでスピーカーノートをクリアできる(

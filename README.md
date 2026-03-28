@@ -1,148 +1,154 @@
-# 代打AI
+[English](./README.md) | [日本語](./README_JA.md) | [简体中文](./README_ZH.md) | [한국어](./README_KO.md)
 
-LT登壇を代打してくれる Claude Code Plugin.
+# Relief Pitcher AI
 
-## 機能概要
+A Claude Code Plugin that auto-generates presentation materials — so AI can pitch in your place.
 
-1. 登壇テーマを入力したら、発表のアウトラインをMarkdownで出力・保存する
-2. 当該Markdownに基づき、スライド資料を作成する
-   - スライド資料はPowerPointで作成する
-   - 事前に定義されたスライドテンプレートのデザインに従い作成する
-   - スライドは白紙からではなく、スライドレイアウトを選択して作成する
-   - スライドタイトルやテキスト本文はアウトライン表示で確認できるように設定する
-3. スライド資料のnote欄にトークスクリプト(台本)を記入する
-   - スクリプトは、カジュアル、キーノートなど複数のスタイルで文体を選べる
-4. トークスクリプトを読み上げた音声を合成する
-   - 読み辞書による誤読の自動修正に対応
-   - TTSスクリプトをエクスポートして手動修正も可能
-5. 上記音声合成をスライドに埋め込む
-6. スライドショーの自動再生を設定する
+> **daida-ai** (from Japanese *daida* 代打 — pinch hitter): just as a relief pitcher steps onto the mound when you can't, this plugin takes over and delivers your entire presentation for you.
 
-## 対応フォーマット
+## Features
 
-pptx および odp(Open Document Presentation)
+1. Input a talk theme and generate a structured outline in Markdown
+2. Build slide decks from the outline
+   - Slides are generated in PowerPoint format
+   - Pre-designed slide templates (dark tech, warm casual, formal business)
+   - Slides use proper layouts (not blank canvases) for consistent formatting
+   - Titles and body text are set in outline-accessible placeholders
+3. Write talk scripts (speaker notes) for each slide
+   - Multiple speaking styles: casual, keynote, formal, humorous
+4. Synthesize narration audio from the talk scripts
+   - Pronunciation dictionary auto-corrects common TTS misreadings
+   - TTS scripts can be exported for manual editing
+5. Embed synthesized audio into the slides
+6. Configure automatic slideshow playback
 
-## インストール
+## Supported Formats
 
-### 前提条件
+PPTX and ODP (Open Document Presentation)
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) がインストール済み
-- Python 3.11以上
+## Installation
 
-### Step 1: マーケットプレイスを追加
+### Prerequisites
 
-Claude Code 内で以下を実行:
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
+- Python 3.11+
+
+### Step 1: Add the marketplace
+
+In Claude Code, run:
 
 ```
 /plugin marketplace add hawkymisc/daida-ai
 ```
 
-### Step 2: プラグインをインストール
+### Step 2: Install the plugin
 
 ```
 /plugin install daida-ai@hawkymisc-daida-ai
 ```
 
-### Step 3: セットアップ
+### Step 3: Setup
 
-初回使用時、`/daida-ai:daida-ai` を実行するとセットアップスクリプトの実行を求められます。
-Claude の指示に従い、以下のコマンドを承認してください:
+On first use, run `/daida-ai:relief-pitcher-ai` and you will be prompted to execute the setup script.
+Follow Claude's instructions and approve:
 
 ```bash
-bash <plugin-dir>/skills/daida-ai/scripts/setup.sh
+bash <plugin-dir>/skills/relief-pitcher-ai/scripts/setup.sh
 ```
 
-これにより Python 仮想環境の作成と依存パッケージのインストールが行われます。
+This creates a Python virtual environment and installs all dependencies.
 
-## 使い方
+## Usage
 
-Claude Code で以下のように呼び出します:
+Invoke in Claude Code:
 
 ```
-/daida-ai:daida-ai
+/daida-ai:relief-pitcher-ai
 ```
 
-または、自然言語で依頼できます:
+Or use natural language:
 
-- 「LTの資料を作って」
-- 「プレゼンを作成して」
-- 「代打で登壇資料を作って」
+- "Create LT slides for me"
+- "Generate a presentation"
+- "Make a pitch deck"
 
-### ワークフロー
+### Workflow
 
-対話形式で以下を聞かれます:
+You'll be asked interactively:
 
-1. **テーマ**: 何について話すか
-2. **対象者**: 誰に向けたLTか
-3. **持ち時間**: 何分か（デフォルト5分）
-4. **テンプレート**: `tech` / `casual` / `formal`
-5. **TTSエンジン**: `edge`（デフォルト） / `voicevox`
+1. **Theme**: What the talk is about
+2. **Audience**: Who the talk is for
+3. **Duration**: How many minutes (default: 5)
+4. **Template**: `tech` / `casual` / `formal`
+5. **TTS Engine**: `edge` (default) / `voicevox`
 
-全自動で、アウトライン → スライド → トークスクリプト → 音声合成 → 音声埋め込み → スライドショー設定 まで実行されます。
+The full pipeline runs automatically: Outline → Slides → Talk Script → Audio Synthesis → Audio Embedding → Slideshow Setup.
 
-### ヘルプ
+### Help
 
-「ヘルプ」「使い方」「流れを教えて」と聞くと、パイプライン全体の図が表示されます。
+Ask "help", "show usage", or "how does this work?" to see the full pipeline diagram.
 
-### ステップ再開
+### Restarting from a Step
 
-途中でPPTXや読み上げテキストを修正した場合、「Step 4 からやり直して」のように指定すると、そのステップから再開できます。
+If you modify the PPTX or TTS scripts midway, you can say "restart from Step 4" to resume from that step.
 
-よくある例:
-- PPTXを手動修正した後 → 「Step 4 から」で音声を再生成
-- 読みを修正した後 → 「Step 4c から」で音声合成のみ再実行
-- テンプレートを変えたい → 「Step 2 から」でスライド再生成
+Common examples:
+- After editing the PPTX manually → "restart from Step 4" to regenerate audio
+- After fixing pronunciation → "restart from Step 4c" to re-run audio synthesis only
+- To change the template → "restart from Step 2" to regenerate slides
 
-### 読み上げテキストの修正
+### Fixing TTS Pronunciation
 
-TTSが誤った読みを生成する場合（例: 「生成」→「せいしげる」）、以下の方法で修正できます:
+If TTS produces incorrect readings, you can fix them in two ways:
 
-- **読み辞書**: `skills/daida-ai/assets/pronunciation_dict.tsv` に置換ルールを定義（エクスポート時に自動適用）
-- **手動修正**: TTSスクリプトをエクスポートし、テキストエディタで直接修正
+- **Pronunciation dictionary**: Define substitution rules in `skills/relief-pitcher-ai/assets/pronunciation_dict.tsv` (applied automatically at export time)
+- **Manual editing**: Export the TTS script and edit it directly in a text editor
 
-## テンプレート
+## Templates
 
-| テンプレート | 特徴 | 日本語フォント |
-|------------|------|--------------|
-| `tech` | ダークテーマ、シアンアクセント | Noto Sans CJK JP |
-| `casual` | ウォーム系、丸みのあるデザイン | Noto Sans CJK JP |
-| `formal` | ホワイトベース、ビジネス向け | Noto Serif CJK JP / Noto Sans CJK JP |
+| Template | Style | Font |
+|----------|-------|------|
+| `tech` | Dark theme, cyan accents | Noto Sans CJK JP |
+| `casual` | Warm tones, rounded design | Noto Sans CJK JP |
+| `formal` | White base, business-oriented | Noto Serif CJK JP / Noto Sans CJK JP |
 
-## 音声合成エンジン
+> **Note**: Templates are currently optimized for Japanese content. For other languages, system fonts will be used as fallback.
 
-| エンジン | 特徴 | 備考 |
-|----------|------|------|
-| edge-tts | Microsoft Edge TTS。インストール不要 | デフォルト |
-| VOICEVOX | ずんだもん等のキャラクター音声 | [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) の起動が必要 |
+## TTS Engines
 
-## バリデーション
+| Engine | Description | Notes |
+|--------|-------------|-------|
+| edge-tts | Microsoft Edge TTS. No installation required. Supports multiple languages. | Default |
+| VOICEVOX | Character voices (e.g., Zundamon). Japanese-language TTS engine. | Requires [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) running |
 
-スライド仕様JSON（LLMが生成）に対して、以下のバリデーションを自動実行します:
+## Validation
 
-- スライド枚数（1〜20枚）
-- レイアウトとフィールドの整合性（例: `two_content`には`left`/`right`が必須）
-- テキスト長の上限（タイトル100字、本文項目200字 等）
-- 音声ファイルの形式（MP3/WAV）とサイズ（50MB以下）
-- 推定発話時間の上限チェック
+The following validations are automatically applied to the slide specification JSON (generated by LLM):
 
-## 注意事項
+- Slide count (1–20 slides)
+- Layout-field consistency (e.g., `two_content` requires `left`/`right`)
+- Text length limits (title: 100 chars, body item: 200 chars, etc.)
+- Audio file format (MP3/WAV) and size (max 50 MB)
+- Estimated speaking duration check
 
-### LibreOffice Impress での再生について
+## Notes
 
-自動ページ送り（スライドショー中に音声終了後に自動で次のスライドに進む機能）は **PowerPoint（Windows / macOS）でのみ動作** します。
+### Playback in LibreOffice Impress
 
-**LibreOffice Impress では自動ページ送りが動作しません**。これは LibreOffice が PPTX 内のタイミング設定（`advTm`）を正しく処理しない既知の制限によるものです（[Bug 101527](https://bugs.documentfoundation.org/show_bug.cgi?id=101527)）。
+Auto-advance (automatically moving to the next slide after audio finishes) **only works in PowerPoint (Windows / macOS)**.
 
-LibreOffice で再生する場合は、以下のいずれかで対応してください:
-- **手動**でスライドを送る（クリックまたは矢印キー）
-- LibreOffice 上で「スライド切り替え」パネルから各スライドの自動切り替え時間を手動設定する
+**LibreOffice Impress does not support auto-advance**. This is a known limitation where LibreOffice does not correctly process PPTX timing settings (`advTm`) — see [Bug 101527](https://bugs.documentfoundation.org/show_bug.cgi?id=101527).
 
-### フォントについて
+When using LibreOffice Impress:
+- Advance slides **manually** (click or arrow keys)
+- Or set auto-advance times manually via the "Slide Transition" panel in LibreOffice
 
-テンプレートの日本語フォントには [Noto CJK](https://github.com/googlefonts/noto-cjk) を使用しています。
-Windows / macOS / Linux いずれでも利用可能ですが、未インストールの場合はOSのデフォルトフォントで代替されます。
-最適な表示のため、事前に Noto Sans CJK JP のインストールを推奨します。
+### About Fonts
 
-## ライセンス
+Templates use [Noto CJK](https://github.com/googlefonts/noto-cjk) fonts for Japanese text.
+Available on Windows, macOS, and Linux. If not installed, OS default fonts will be used as fallback.
+For optimal display, we recommend installing Noto Sans CJK JP in advance.
+
+## License
 
 MIT

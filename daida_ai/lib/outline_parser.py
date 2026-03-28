@@ -48,7 +48,7 @@ def parse_outline(md: str) -> Outline:
         ValueError: 空文字列またはH1タイトルがない場合
     """
     if not md.strip():
-        raise ValueError("アウトラインが空です")
+        raise ValueError("Outline is empty")
 
     title: str | None = None
     sections: list[OutlineSection] = []
@@ -75,6 +75,6 @@ def parse_outline(md: str) -> Outline:
             continue
 
     if title is None:
-        raise ValueError("タイトル（H1）が見つかりません")
+        raise ValueError("Title (H1) heading not found")
 
     return Outline(title=title, sections=sections)

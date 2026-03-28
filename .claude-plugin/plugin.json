@@ -1,6 +1,6 @@
 {
   "name": "daida-ai",
-  "description": "LTプレゼン自動生成 — テーマからスライド・音声ナレーション付きPPTXまで一括対応",
+  "description": "Auto-generate LT presentations — from theme to narrated PPTX slides in one go",
   "version": "0.3.0",
   "author": {
     "name": "hawkymisc"

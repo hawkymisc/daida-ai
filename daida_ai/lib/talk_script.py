@@ -56,7 +56,7 @@ def write_notes(
 
     if len(notes) != len(prs.slides):
         raise ValueError(
-            f"スライド数({len(prs.slides)})とノート数({len(notes)})が一致しません"
+            f"Slide count ({len(prs.slides)}) does not match notes count ({len(notes)})"
         )
 
     for slide, note_text in zip(prs.slides, notes):

@@ -87,3 +87,82 @@ parser.add_argument(
 - **特徴**: OpenAI公式は `alloy` 等のプリセット音声のみ。OpenAI互換サーバ利用時は `--voice` にカスタム音声名を指定可能
 - **デフォルト音声**: `alloy`
 - **デフォルトモデル**: `tts-1`
+
+---
+
+## APIキー / 環境変数の設定方法（ユーザー向け）
+
+クラウドTTSエンジン（ElevenLabs / OpenAI）は環境変数経由でAPIキーを受け取る。
+CLI引数やコード内にキーを直書きしてはいけない。
+
+### 認識する環境変数一覧
+
+| 変数 | 用途 | 必須 |
+|------|------|------|
+| `ELEVENLABS_API_KEY` | ElevenLabs APIキー | ElevenLabs利用時 |
+| `ELEVENLABS_API_BASE` | APIベースURL上書き（プロキシ等） | 任意 |
+| `OPENAI_API_KEY` | OpenAI APIキー | OpenAI利用時 |
+| `OPENAI_API_BASE` | APIベースURL上書き（互換サーバ接続時） | 任意 |
+| `OPENAI_TTS_MODEL` | モデル名上書き（例: `tts-1-hd`） | 任意 |
+
+### 設定手順（いずれか1つ）
+
+#### A. 今回のシェルセッションのみ
+
+```bash
+export ELEVENLABS_API_KEY="sk_..."
+export OPENAI_API_KEY="sk-..."
+```
+
+ターミナルを閉じると失われる。1回限りの動作確認向け。
+
+#### B. 永続化（推奨）
+
+`~/.bashrc` / `~/.zshrc` に追記:
+
+```bash
+echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### C. `.env` ファイル
+
+プロジェクトディレクトリに `.env` を作成:
+
+```
+ELEVENLABS_API_KEY=sk_...
+OPENAI_API_KEY=sk-...
+```
+
+実行前に読み込む（`.gitignore` に `.env` を追加することが前提）:
+
+```bash
+set -a && source .env && set +a
+```
+
+### APIキー発行手順
+
+- **ElevenLabs**: https://elevenlabs.io/app/settings/api-keys → 「Create API Key」
+- **OpenAI**: https://platform.openai.com/api-keys → 「Create new secret key」
+
+### 動作確認
+
+```bash
+# 値ではなく「設定されているか」だけ確認する（値を画面/ログに出さない）
+test -n "${ELEVENLABS_API_KEY:-}" && echo "ELEVENLABS_API_KEY: set"
+test -n "${OPENAI_API_KEY:-}" && echo "OPENAI_API_KEY: set"
+```
+
+### Voice Cloneのvoice_idを調べる（ElevenLabs）
+
+1. https://elevenlabs.io/app/voice-lab を開く
+2. 対象のVoice Cloneを選択
+3. 表示された voice_id をコピー（例: `21m00Tcm4TlvDq8ikWAM`）
+4. `--voice <voice_id>` で指定
+
+### セキュリティ上の注意
+
+- APIキーを**チャット履歴やコミットに残さない**。Claude Codeとのやり取りでは
+  環境変数名（`ELEVENLABS_API_KEY` など）だけを指示し、値は送信しない。
+- `.env` を使う場合は `.gitignore` に必ず追加。
+- キー漏洩の疑いがある場合は各プロバイダの管理画面から即時 revoke する。

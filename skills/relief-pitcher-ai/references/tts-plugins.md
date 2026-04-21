@@ -87,3 +87,82 @@ parser.add_argument(
 - **Features**: Official OpenAI TTS only supports preset voices (e.g., `alloy`). When using OpenAI-compatible servers, pass the custom voice name via `--voice`.
 - **Default voice**: `alloy`
 - **Default model**: `tts-1`
+
+---
+
+## API key / environment variable setup (user-facing)
+
+Cloud TTS engines (ElevenLabs / OpenAI) read API keys from environment
+variables. Do not hard-code keys in CLI arguments or source files.
+
+### Recognized environment variables
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `ELEVENLABS_API_KEY` | ElevenLabs API key | When using ElevenLabs |
+| `ELEVENLABS_API_BASE` | Override API base URL (proxy, etc.) | Optional |
+| `OPENAI_API_KEY` | OpenAI API key | When using OpenAI |
+| `OPENAI_API_BASE` | Override API base URL (compatible servers) | Optional |
+| `OPENAI_TTS_MODEL` | Override model name (e.g., `tts-1-hd`) | Optional |
+
+### Setup options (pick one)
+
+#### A. Current shell session only
+
+```bash
+export ELEVENLABS_API_KEY="sk_..."
+export OPENAI_API_KEY="sk-..."
+```
+
+Lost when the terminal closes. Useful for quick tests.
+
+#### B. Persist (recommended)
+
+Append to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### C. `.env` file
+
+Create `.env` in the project directory:
+
+```
+ELEVENLABS_API_KEY=sk_...
+OPENAI_API_KEY=sk-...
+```
+
+Load before running (assumes `.env` is in `.gitignore`):
+
+```bash
+set -a && source .env && set +a
+```
+
+### Getting an API key
+
+- **ElevenLabs**: https://elevenlabs.io/app/settings/api-keys → "Create API Key"
+- **OpenAI**: https://platform.openai.com/api-keys → "Create new secret key"
+
+### Verify the setup
+
+```bash
+# Check presence only — never echo the value to logs / transcripts.
+test -n "${ELEVENLABS_API_KEY:-}" && echo "ELEVENLABS_API_KEY: set"
+test -n "${OPENAI_API_KEY:-}" && echo "OPENAI_API_KEY: set"
+```
+
+### Find your Voice Clone `voice_id` (ElevenLabs)
+
+1. Open https://elevenlabs.io/app/voice-lab
+2. Select your Voice Clone
+3. Copy the displayed voice_id (e.g., `21m00Tcm4TlvDq8ikWAM`)
+4. Pass via `--voice <voice_id>`
+
+### Security notes
+
+- Never paste API keys into chat history or commits. Share only the variable
+  *name* (e.g., `ELEVENLABS_API_KEY`) with Claude Code — never the value.
+- If using `.env`, ensure `.env` is in `.gitignore`.
+- If you suspect a leak, revoke the key immediately from the provider's dashboard.

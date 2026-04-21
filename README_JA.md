@@ -134,6 +134,30 @@ TTSが誤った読みを生成する場合（例: 「生成」→「せいしげ
 | `OPENAI_API_BASE` | OpenAI APIベースURL（省略時は公式。互換サーバ利用時に差し替え） |
 | `OPENAI_TTS_MODEL` | OpenAI TTSモデル名（省略時は `tts-1`） |
 
+### APIキーの設定方法
+
+スキル実行前に該当する環境変数を設定してください。簡易手順:
+
+```bash
+# 今回のシェルセッションのみ
+export ELEVENLABS_API_KEY="sk_..."
+export OPENAI_API_KEY="sk-..."
+
+# ~/.bashrc / ~/.zshrc に追記して永続化
+echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+APIキーの発行:
+- ElevenLabs: https://elevenlabs.io/app/settings/api-keys
+- OpenAI: https://platform.openai.com/api-keys
+
+APIキーは絶対にチャット履歴やソースコード、コミットに貼り付けないでください。
+`.env` での管理方法、セキュリティ上の注意、ElevenLabs Voice Cloneの
+`voice_id` の調べ方などの詳細は
+[`skills/daida-ai/references/tts-plugins.md`](./skills/daida-ai/references/tts-plugins.md)
+を参照してください。
+
 ## バリデーション
 
 スライド仕様JSON（LLMが生成）に対して、以下のバリデーションを自動実行します:

@@ -78,7 +78,7 @@ Claude Code で以下のように呼び出します:
 2. **対象者**: 誰に向けたLTか
 3. **持ち時間**: 何分か（デフォルト5分）
 4. **テンプレート**: `tech` / `casual` / `formal`
-5. **TTSエンジン**: `edge`（デフォルト） / `voicevox`
+5. **TTSエンジン**: `edge`（デフォルト） / `voicevox` / `elevenlabs` / `openai`
 
 全自動で、アウトライン → スライド → トークスクリプト → 音声合成 → 音声埋め込み → スライドショー設定 まで実行されます。
 
@@ -116,6 +116,47 @@ TTSが誤った読みを生成する場合（例: 「生成」→「せいしげ
 |----------|------|------|
 | edge-tts | Microsoft Edge TTS。インストール不要 | デフォルト |
 | VOICEVOX | ずんだもん等のキャラクター音声 | [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) の起動が必要 |
+| ElevenLabs | 高品質クラウドTTS。Voice Clone資産をそのまま利用可能（`--voice`に自分の`voice_id`を指定） | 環境変数 `ELEVENLABS_API_KEY` が必要 |
+| OpenAI | OpenAI Text-to-Speech (`tts-1` / `tts-1-hd`)。Voice Cloneを持つOpenAI互換サーバにも接続可能 | 環境変数 `OPENAI_API_KEY` が必要 |
+
+### Voice Cloneの利用
+
+- **ElevenLabs**: 作成済みVoice Cloneの`voice_id`を `--voice` に渡すだけで利用可能（例: `--engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM`）。
+- **OpenAI互換サーバ**: `OPENAI_API_BASE` を自分のサーバのエンドポイントに設定し、`--voice` にカスタム音声名を指定。
+
+### 環境変数
+
+| 変数名 | 用途 |
+|--------|------|
+| `ELEVENLABS_API_KEY` | ElevenLabs APIキー |
+| `ELEVENLABS_API_BASE` | ElevenLabs APIベースURL（省略時は公式エンドポイント） |
+| `OPENAI_API_KEY` | OpenAI APIキー |
+| `OPENAI_API_BASE` | OpenAI APIベースURL（省略時は公式。互換サーバ利用時に差し替え） |
+| `OPENAI_TTS_MODEL` | OpenAI TTSモデル名（省略時は `tts-1`） |
+
+### APIキーの設定方法
+
+スキル実行前に該当する環境変数を設定してください。簡易手順:
+
+```bash
+# 今回のシェルセッションのみ
+export ELEVENLABS_API_KEY="sk_..."
+export OPENAI_API_KEY="sk-..."
+
+# ~/.bashrc / ~/.zshrc に追記して永続化
+echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+APIキーの発行:
+- ElevenLabs: https://elevenlabs.io/app/settings/api-keys
+- OpenAI: https://platform.openai.com/api-keys
+
+APIキーは絶対にチャット履歴やソースコード、コミットに貼り付けないでください。
+`.env` での管理方法、セキュリティ上の注意、ElevenLabs Voice Cloneの
+`voice_id` の調べ方などの詳細は
+[`skills/daida-ai/references/tts-plugins.md`](./skills/daida-ai/references/tts-plugins.md)
+を参照してください。
 
 ## バリデーション
 

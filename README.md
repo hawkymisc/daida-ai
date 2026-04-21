@@ -80,7 +80,7 @@ You'll be asked interactively:
 2. **Audience**: Who the talk is for
 3. **Duration**: How many minutes (default: 5)
 4. **Template**: `tech` / `casual` / `formal`
-5. **TTS Engine**: `edge` (default) / `voicevox`
+5. **TTS Engine**: `edge` (default) / `voicevox` / `elevenlabs` / `openai`
 
 The full pipeline runs automatically: Outline → Slides → Talk Script → Audio Synthesis → Audio Embedding → Slideshow Setup.
 
@@ -120,6 +120,46 @@ If TTS produces incorrect readings, you can fix them in two ways:
 |--------|-------------|-------|
 | edge-tts | Microsoft Edge TTS. No installation required. Supports multiple languages. | Default |
 | VOICEVOX | Character voices (e.g., Zundamon). Japanese-language TTS engine. | Requires [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) running |
+| ElevenLabs | High-quality cloud TTS with Voice Clone support. Pass your cloned `voice_id` via `--voice`. | Requires `ELEVENLABS_API_KEY` env var |
+| OpenAI | OpenAI Text-to-Speech (`tts-1` / `tts-1-hd`). Also works with OpenAI-compatible servers that host custom voice clones. | Requires `OPENAI_API_KEY` env var |
+
+### Using Voice Clones
+
+- **ElevenLabs**: Pass your cloned voice's `voice_id` through `--voice` (e.g., `--engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM`).
+- **OpenAI-compatible servers**: Set `OPENAI_API_BASE` to your server's endpoint, then pass your custom voice name via `--voice`.
+
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `ELEVENLABS_API_KEY` | ElevenLabs API key |
+| `ELEVENLABS_API_BASE` | ElevenLabs API base URL (optional; defaults to the official endpoint) |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `OPENAI_API_BASE` | OpenAI API base URL (optional; set for OpenAI-compatible servers) |
+| `OPENAI_TTS_MODEL` | OpenAI TTS model name (optional; defaults to `tts-1`) |
+
+### Setting API Keys
+
+Set the relevant variable before running the skill. Quick setup:
+
+```bash
+# Session-only
+export ELEVENLABS_API_KEY="sk_..."
+export OPENAI_API_KEY="sk-..."
+
+# Or persist in ~/.bashrc / ~/.zshrc
+echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Get an API key:
+- ElevenLabs: https://elevenlabs.io/app/settings/api-keys
+- OpenAI: https://platform.openai.com/api-keys
+
+Never paste API keys into chat history, source files, or commits. See
+[`skills/relief-pitcher-ai/references/tts-plugins.md`](./skills/relief-pitcher-ai/references/tts-plugins.md)
+for a full setup guide including `.env` usage, security notes, and
+locating your ElevenLabs Voice Clone `voice_id`.
 
 ## Validation
 

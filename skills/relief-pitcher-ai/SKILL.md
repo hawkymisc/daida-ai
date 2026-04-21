@@ -60,7 +60,7 @@ When the user asks "help", "how to use", "show me the workflow", etc., display t
 ║                                                              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Templates: tech / casual / formal                           ║
-║  TTS: edge (default) / voicevox                              ║
+║  TTS: edge (default) / voicevox / elevenlabs / openai        ║
 ║  Output: PPTX / ODP (conversion option) / MP4 (video option) ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -601,8 +601,90 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh write_talk_script.py output/presentation
 ## Step 4: Speech Synthesis
 
 ### Confirm with the user
-- TTS engine: `edge` (default) / `voicevox`
-- Voice: default is `ja-JP-NanamiNeural` (edge), `1` = Zundamon (voicevox)
+- TTS engine: `edge` (default) / `voicevox` / `elevenlabs` / `openai`
+- Voice:
+  - edge: default `ja-JP-NanamiNeural`
+  - voicevox: default `1` (Zundamon)
+  - elevenlabs: pass a voice_id via `--voice` (user's Voice Clone IDs work too). Requires `ELEVENLABS_API_KEY` env var
+  - openai: pass a preset voice name (e.g., `alloy`) via `--voice`. Requires `OPENAI_API_KEY` env var
+
+### Step 4-pre: API key setup (only when `elevenlabs` / `openai` is selected)
+
+If the user selects `elevenlabs` or `openai`, **always walk them through API key
+setup in this step before running synthesis**. Use the Bash tool to check the
+env var presence and, if missing, present the setup instructions.
+
+#### 1. Check the environment variable
+
+Check presence only — `echo "${ELEVENLABS_API_KEY:+set}"`. Never echo the value
+itself; the key must not end up in logs or transcripts.
+
+```bash
+# When ElevenLabs is selected
+test -n "${ELEVENLABS_API_KEY:-}" && echo "ELEVENLABS_API_KEY: set" || echo "ELEVENLABS_API_KEY: NOT SET"
+
+# When OpenAI is selected
+test -n "${OPENAI_API_KEY:-}" && echo "OPENAI_API_KEY: set" || echo "OPENAI_API_KEY: NOT SET"
+```
+
+#### 2. Message templates shown to the user when the key is missing
+
+**ElevenLabs:**
+> `ELEVENLABS_API_KEY` is not set. Configure it with one of the methods below.
+>
+> **Get a key**: Sign in at https://elevenlabs.io/app/settings/api-keys and
+> create a new API key.
+>
+> **Session-only** (in your terminal):
+> ```bash
+> export ELEVENLABS_API_KEY="sk_..."
+> ```
+>
+> **Persist** (append to `~/.bashrc` or `~/.zshrc`):
+> ```bash
+> echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+>
+> Tell me "done" once set and I'll continue.
+
+**OpenAI:**
+> `OPENAI_API_KEY` is not set. Configure it with one of the methods below.
+>
+> **Get a key**: Sign in at https://platform.openai.com/api-keys and create a
+> new secret key.
+>
+> **Session-only**:
+> ```bash
+> export OPENAI_API_KEY="sk-..."
+> ```
+>
+> **Persist**:
+> ```bash
+> echo 'export OPENAI_API_KEY="sk-..."' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+>
+> If you're using an OpenAI-compatible server (e.g., for your own Voice
+> Clones), also set `OPENAI_API_BASE`:
+> ```bash
+> export OPENAI_API_BASE="https://your-server.example.com/v1"
+> ```
+>
+> Tell me "done" once set and I'll continue.
+
+#### 3. Security notes (include in the message to the user)
+
+- Never paste the API key into scripts, `--voice` arguments, or chat history.
+- If using a `.env` file, ensure `.env` is listed in `.gitignore`.
+- Share only the env var *name* with Claude Code — never the key value.
+- If you suspect a leak, revoke the key immediately from the provider's dashboard.
+
+#### 4. Voice Clone voice_id (ElevenLabs only, optional)
+
+If the user wants to use their Voice Clone, direct them to the Voice Library
+(https://elevenlabs.io/app/voice-lab), copy the target voice's `voice_id`, and
+pass it via `--voice`.
 
 ### Step 4a: TTS Script Export
 
@@ -649,6 +731,16 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.
 When using VOICEVOX (VOICEVOX Engine must be running beforehand):
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine voicevox --script output/tts_script.txt
+```
+
+When using ElevenLabs (set `ELEVENLABS_API_KEY` beforehand; `--voice` accepts your Voice Clone's `voice_id`):
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM --script output/tts_script.txt
+```
+
+When using OpenAI TTS (set `OPENAI_API_KEY` beforehand; set `OPENAI_API_BASE` to use an OpenAI-compatible server):
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine openai --voice alloy --script output/tts_script.txt
 ```
 
 ### TTS Failure Handling

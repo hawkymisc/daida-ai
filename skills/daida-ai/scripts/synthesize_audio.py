@@ -18,11 +18,20 @@ def main():
     parser.add_argument("output_dir", type=Path, help="音声ファイル出力ディレクトリ")
     parser.add_argument(
         "--engine",
-        choices=["edge", "voicevox"],
+        choices=["edge", "voicevox", "elevenlabs", "openai"],
         default="edge",
         help="TTSエンジン (default: edge)",
     )
-    parser.add_argument("--voice", type=str, default=None, help="音声名/ID")
+    parser.add_argument(
+        "--voice",
+        type=str,
+        default=None,
+        help=(
+            "音声名/ID "
+            "(edge: voice name, voicevox: speaker id, "
+            "elevenlabs: voice_id (Voice Clone含む), openai: voice name)"
+        ),
+    )
     parser.add_argument(
         "--script",
         type=Path,

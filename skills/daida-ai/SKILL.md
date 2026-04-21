@@ -59,7 +59,7 @@ Step 6（スライドショー設定）までで **PPTX として完成** する
 ║                                                              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  テンプレート: tech / casual / formal                        ║
-║  TTS: edge (デフォルト) / voicevox                           ║
+║  TTS: edge (デフォルト) / voicevox / elevenlabs / openai     ║
 ║  出力: PPTX / ODP (変換オプション) / MP4 (動画オプション)    ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -601,8 +601,90 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh write_talk_script.py output/presentation
 ## Step 4: 音声合成
 
 ### ユーザーに確認する
-- TTSエンジン: `edge`（デフォルト） / `voicevox`
-- 音声: デフォルトは `ja-JP-NanamiNeural`（edge）、`1`=ずんだもん（voicevox）
+- TTSエンジン: `edge`（デフォルト） / `voicevox` / `elevenlabs` / `openai`
+- 音声:
+  - edge: デフォルト `ja-JP-NanamiNeural`
+  - voicevox: デフォルト `1`（ずんだもん）
+  - elevenlabs: `--voice` にvoice_idを指定（ユーザーのVoice Cloneも利用可）。環境変数 `ELEVENLABS_API_KEY` が必要
+  - openai: `--voice` にプリセット音声名（`alloy` など）を指定。環境変数 `OPENAI_API_KEY` が必要
+
+### Step 4-pre: APIキーの設定（`elevenlabs` / `openai` 選択時のみ）
+
+ユーザーが `elevenlabs` または `openai` を選んだ場合、音声合成を実行する前に
+**必ずこのステップでAPIキー設定を案内する**。Bashツールで環境変数の存在を確認し、
+未設定ならユーザーに設定方法を提示する。
+
+#### 1. 環境変数の確認
+
+まず `echo "${ELEVENLABS_API_KEY:+set}"` のように存在だけをチェックする
+（値をechoで表示してはいけない。ログやトランスクリプトにキーが残る恐れがある）。
+
+```bash
+# ElevenLabs選択時
+test -n "${ELEVENLABS_API_KEY:-}" && echo "ELEVENLABS_API_KEY: set" || echo "ELEVENLABS_API_KEY: NOT SET"
+
+# OpenAI選択時
+test -n "${OPENAI_API_KEY:-}" && echo "OPENAI_API_KEY: set" || echo "OPENAI_API_KEY: NOT SET"
+```
+
+#### 2. 未設定時にユーザーへ案内する文言テンプレート
+
+**ElevenLabs の場合:**
+> `ELEVENLABS_API_KEY` が未設定です。以下のいずれかで設定してください。
+>
+> **発行方法**: https://elevenlabs.io/app/settings/api-keys にログインし、
+> 「Create API Key」からキーを発行してください。
+>
+> **今回のセッションのみ**（ターミナルで実行）:
+> ```bash
+> export ELEVENLABS_API_KEY="sk_..."
+> ```
+>
+> **永続化**（`~/.bashrc` または `~/.zshrc` に追記）:
+> ```bash
+> echo 'export ELEVENLABS_API_KEY="sk_..."' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+>
+> 設定後、「設定完了」と伝えてください。続行します。
+
+**OpenAI の場合:**
+> `OPENAI_API_KEY` が未設定です。以下のいずれかで設定してください。
+>
+> **発行方法**: https://platform.openai.com/api-keys にログインし、
+> 「Create new secret key」からキーを発行してください。
+>
+> **今回のセッションのみ**:
+> ```bash
+> export OPENAI_API_KEY="sk-..."
+> ```
+>
+> **永続化**:
+> ```bash
+> echo 'export OPENAI_API_KEY="sk-..."' >> ~/.bashrc
+> source ~/.bashrc
+> ```
+>
+> OpenAI互換サーバ（自前のVoice Cloneサーバなど）を使う場合は
+> `OPENAI_API_BASE` も併せて設定してください:
+> ```bash
+> export OPENAI_API_BASE="https://your-server.example.com/v1"
+> ```
+>
+> 設定後、「設定完了」と伝えてください。続行します。
+
+#### 3. セキュリティ上の注意（ユーザーへの案内に含める）
+
+- APIキーは**絶対に**スクリプト内や `--voice` 引数、チャット履歴に直接書き込まない。
+- `.env` ファイルで管理する場合は、`.gitignore` に `.env` を必ず追加する。
+- Claude Code の会話にAPIキー本体を貼り付けさせない（環境変数名だけで十分）。
+- キーが漏洩した疑いがある場合は、各プロバイダの管理画面から即座に revoke する。
+
+#### 4. Voice Cloneのvoice_id確認（ElevenLabsのみ、任意）
+
+ユーザーがVoice Cloneを使いたい場合は、ElevenLabsのVoice Library
+（https://elevenlabs.io/app/voice-lab）から対象Voiceの
+`voice_id` をコピーして `--voice` に渡すよう案内する。
 
 ### Step 4a: TTSスクリプトのエクスポート
 
@@ -649,6 +731,16 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.
 VOICEVOX使用時（事前にVOICEVOX Engineの起動が必要）:
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine voicevox --script output/tts_script.txt
+```
+
+ElevenLabs使用時（`ELEVENLABS_API_KEY` の事前設定が必要。`--voice` にVoice Cloneの`voice_id`も指定可）:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM --script output/tts_script.txt
+```
+
+OpenAI TTS使用時（`OPENAI_API_KEY` の事前設定が必要。互換サーバを使う場合は `OPENAI_API_BASE` も設定）:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine openai --voice alloy --script output/tts_script.txt
 ```
 
 ### TTS障害時の対応

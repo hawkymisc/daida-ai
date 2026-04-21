@@ -3,10 +3,12 @@
 ## アーキテクチャ
 
 ```
-tts_engine.py       # 抽象基底クラス TTSEngine
-├── tts_edge.py     # edge-tts 実装
-├── tts_voicevox.py # VOICEVOX API 実装
-└── tts_xxx.py      # 新しいプラグイン（あなたが追加）
+tts_engine.py           # 抽象基底クラス TTSEngine
+├── tts_edge.py         # edge-tts 実装
+├── tts_voicevox.py     # VOICEVOX API 実装
+├── tts_elevenlabs.py   # ElevenLabs API 実装（Voice Clone対応）
+├── tts_openai.py       # OpenAI TTS API 実装（互換サーバ対応）
+└── tts_xxx.py          # 新しいプラグイン（あなたが追加）
 ```
 
 ## 新しいTTSプラグインの追加手順
@@ -55,7 +57,7 @@ elif name == "xxx":
 ```python
 parser.add_argument(
     "--engine",
-    choices=["edge", "voicevox", "xxx"],
+    choices=["edge", "voicevox", "elevenlabs", "openai", "xxx"],
     ...
 )
 ```
@@ -71,3 +73,17 @@ parser.add_argument(
 - **依存**: `httpx` パッケージ、VOICEVOX Engine (localhost:50021)
 - **特徴**: ローカル実行、キャラクター音声、感情パラメータ対応
 - **デフォルト音声**: Speaker ID 1 (ずんだもん)
+
+### ElevenLabs
+- **依存**: `httpx` パッケージ
+- **環境変数**: `ELEVENLABS_API_KEY`（必須）、`ELEVENLABS_API_BASE`（任意）
+- **特徴**: 高品質クラウドTTS。`--voice` に自身のVoice Cloneの`voice_id`を指定して利用可能
+- **デフォルト音声**: Rachel (`21m00Tcm4TlvDq8ikWAM`)
+- **デフォルトモデル**: `eleven_multilingual_v2`
+
+### OpenAI
+- **依存**: `httpx` パッケージ
+- **環境変数**: `OPENAI_API_KEY`（必須）、`OPENAI_API_BASE`（互換サーバ用、任意）、`OPENAI_TTS_MODEL`（任意）
+- **特徴**: OpenAI公式は `alloy` 等のプリセット音声のみ。OpenAI互換サーバ利用時は `--voice` にカスタム音声名を指定可能
+- **デフォルト音声**: `alloy`
+- **デフォルトモデル**: `tts-1`

@@ -29,6 +29,14 @@ class TestGetEngine:
         engine = get_engine("voicevox")
         assert isinstance(engine, TTSEngine)
 
+    def test_elevenlabsエンジンを取得できる(self):
+        engine = get_engine("elevenlabs")
+        assert isinstance(engine, TTSEngine)
+
+    def test_openaiエンジンを取得できる(self):
+        engine = get_engine("openai")
+        assert isinstance(engine, TTSEngine)
+
     def test_不正なエンジン名はValueError(self):
         with pytest.raises(ValueError, match="Unknown engine"):
             get_engine("invalid_engine")

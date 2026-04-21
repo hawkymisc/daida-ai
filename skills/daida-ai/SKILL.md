@@ -59,7 +59,7 @@ Step 6（スライドショー設定）までで **PPTX として完成** する
 ║                                                              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  テンプレート: tech / casual / formal                        ║
-║  TTS: edge (デフォルト) / voicevox                           ║
+║  TTS: edge (デフォルト) / voicevox / elevenlabs / openai     ║
 ║  出力: PPTX / ODP (変換オプション) / MP4 (動画オプション)    ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -601,8 +601,12 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh write_talk_script.py output/presentation
 ## Step 4: 音声合成
 
 ### ユーザーに確認する
-- TTSエンジン: `edge`（デフォルト） / `voicevox`
-- 音声: デフォルトは `ja-JP-NanamiNeural`（edge）、`1`=ずんだもん（voicevox）
+- TTSエンジン: `edge`（デフォルト） / `voicevox` / `elevenlabs` / `openai`
+- 音声:
+  - edge: デフォルト `ja-JP-NanamiNeural`
+  - voicevox: デフォルト `1`（ずんだもん）
+  - elevenlabs: `--voice` にvoice_idを指定（ユーザーのVoice Cloneも利用可）。環境変数 `ELEVENLABS_API_KEY` が必要
+  - openai: `--voice` にプリセット音声名（`alloy` など）を指定。環境変数 `OPENAI_API_KEY` が必要
 
 ### Step 4a: TTSスクリプトのエクスポート
 
@@ -649,6 +653,16 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.
 VOICEVOX使用時（事前にVOICEVOX Engineの起動が必要）:
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine voicevox --script output/tts_script.txt
+```
+
+ElevenLabs使用時（`ELEVENLABS_API_KEY` の事前設定が必要。`--voice` にVoice Cloneの`voice_id`も指定可）:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM --script output/tts_script.txt
+```
+
+OpenAI TTS使用時（`OPENAI_API_KEY` の事前設定が必要。互換サーバを使う場合は `OPENAI_API_BASE` も設定）:
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine openai --voice alloy --script output/tts_script.txt
 ```
 
 ### TTS障害時の対応

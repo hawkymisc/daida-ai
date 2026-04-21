@@ -80,7 +80,7 @@ Claude Code에서 호출:
 2. **대상**: 누구를 위한 발표인지
 3. **시간**: 몇 분인지 (기본값: 5분)
 4. **템플릿**: `tech` / `casual` / `formal`
-5. **TTS 엔진**: `edge` (기본값) / `voicevox`
+5. **TTS 엔진**: `edge` (기본값) / `voicevox` / `elevenlabs` / `openai`
 
 전체 파이프라인이 자동 실행됩니다: 아웃라인 → 슬라이드 → 토크 스크립트 → 음성 합성 → 음성 삽입 → 슬라이드쇼 설정.
 
@@ -120,6 +120,8 @@ TTS가 잘못된 발음을 생성하는 경우 다음 방법으로 수정할 수
 |------|------|------|
 | edge-tts | Microsoft Edge TTS. 설치 불필요. 다국어 지원. | 기본값 |
 | VOICEVOX | 캐릭터 음성 (예: 즌다몬). 일본어 TTS 엔진. | [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) 실행 필요 |
+| ElevenLabs | 고품질 클라우드 TTS. 사용자가 만든 Voice Clone의 `voice_id`를 `--voice`로 지정 가능 | 환경 변수 `ELEVENLABS_API_KEY` 필요 |
+| OpenAI | OpenAI Text-to-Speech (`tts-1` / `tts-1-hd`). OpenAI 호환 서버의 커스텀 음성도 이용 가능 | 환경 변수 `OPENAI_API_KEY` 필요 |
 
 ## 검증
 

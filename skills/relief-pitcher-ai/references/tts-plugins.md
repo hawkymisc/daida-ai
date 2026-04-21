@@ -3,10 +3,12 @@
 ## Architecture
 
 ```
-tts_engine.py       # Abstract base class TTSEngine
-├── tts_edge.py     # edge-tts implementation
-├── tts_voicevox.py # VOICEVOX API implementation
-└── tts_xxx.py      # New plugin (added by you)
+tts_engine.py           # Abstract base class TTSEngine
+├── tts_edge.py         # edge-tts implementation
+├── tts_voicevox.py     # VOICEVOX API implementation
+├── tts_elevenlabs.py   # ElevenLabs API implementation (Voice Clone support)
+├── tts_openai.py       # OpenAI TTS API implementation (compatible-server support)
+└── tts_xxx.py          # New plugin (added by you)
 ```
 
 ## Steps to Add a New TTS Plugin
@@ -55,7 +57,7 @@ Add to the `--engine` choices in `synthesize_audio.py`:
 ```python
 parser.add_argument(
     "--engine",
-    choices=["edge", "voicevox", "xxx"],
+    choices=["edge", "voicevox", "elevenlabs", "openai", "xxx"],
     ...
 )
 ```
@@ -71,3 +73,17 @@ parser.add_argument(
 - **Dependency**: `httpx` package, VOICEVOX Engine (localhost:50021)
 - **Features**: Local execution, character voices, emotion parameter support
 - **Default voice**: Speaker ID 1 (Zundamon)
+
+### ElevenLabs
+- **Dependency**: `httpx` package
+- **Environment variables**: `ELEVENLABS_API_KEY` (required), `ELEVENLABS_API_BASE` (optional)
+- **Features**: High-quality cloud TTS. Pass your own Voice Clone `voice_id` via `--voice`.
+- **Default voice**: Rachel (`21m00Tcm4TlvDq8ikWAM`)
+- **Default model**: `eleven_multilingual_v2`
+
+### OpenAI
+- **Dependency**: `httpx` package
+- **Environment variables**: `OPENAI_API_KEY` (required), `OPENAI_API_BASE` (optional, for compatible servers), `OPENAI_TTS_MODEL` (optional)
+- **Features**: Official OpenAI TTS only supports preset voices (e.g., `alloy`). When using OpenAI-compatible servers, pass the custom voice name via `--voice`.
+- **Default voice**: `alloy`
+- **Default model**: `tts-1`

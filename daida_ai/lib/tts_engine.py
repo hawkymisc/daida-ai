@@ -35,7 +35,7 @@ def get_engine(name: str) -> TTSEngine:
     """エンジン名からTTSEngineインスタンスを取得する。
 
     Args:
-        name: "edge" or "voicevox"
+        name: "edge" / "voicevox" / "elevenlabs" / "openai"
 
     Raises:
         ValueError: 不正なエンジン名
@@ -48,5 +48,13 @@ def get_engine(name: str) -> TTSEngine:
         from daida_ai.lib.tts_voicevox import VoicevoxTTSEngine
 
         return VoicevoxTTSEngine()
+    elif name == "elevenlabs":
+        from daida_ai.lib.tts_elevenlabs import ElevenLabsTTSEngine
+
+        return ElevenLabsTTSEngine()
+    elif name == "openai":
+        from daida_ai.lib.tts_openai import OpenAITTSEngine
+
+        return OpenAITTSEngine()
     else:
         raise ValueError(f"Unknown engine: {name}")

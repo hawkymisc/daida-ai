@@ -60,7 +60,7 @@ When the user asks "help", "how to use", "show me the workflow", etc., display t
 ║                                                              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Templates: tech / casual / formal                           ║
-║  TTS: edge (default) / voicevox                              ║
+║  TTS: edge (default) / voicevox / elevenlabs / openai        ║
 ║  Output: PPTX / ODP (conversion option) / MP4 (video option) ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -601,8 +601,12 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh write_talk_script.py output/presentation
 ## Step 4: Speech Synthesis
 
 ### Confirm with the user
-- TTS engine: `edge` (default) / `voicevox`
-- Voice: default is `ja-JP-NanamiNeural` (edge), `1` = Zundamon (voicevox)
+- TTS engine: `edge` (default) / `voicevox` / `elevenlabs` / `openai`
+- Voice:
+  - edge: default `ja-JP-NanamiNeural`
+  - voicevox: default `1` (Zundamon)
+  - elevenlabs: pass a voice_id via `--voice` (user's Voice Clone IDs work too). Requires `ELEVENLABS_API_KEY` env var
+  - openai: pass a preset voice name (e.g., `alloy`) via `--voice`. Requires `OPENAI_API_KEY` env var
 
 ### Step 4a: TTS Script Export
 
@@ -649,6 +653,16 @@ bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.
 When using VOICEVOX (VOICEVOX Engine must be running beforehand):
 ```bash
 bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine voicevox --script output/tts_script.txt
+```
+
+When using ElevenLabs (set `ELEVENLABS_API_KEY` beforehand; `--voice` accepts your Voice Clone's `voice_id`):
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine elevenlabs --voice 21m00Tcm4TlvDq8ikWAM --script output/tts_script.txt
+```
+
+When using OpenAI TTS (set `OPENAI_API_KEY` beforehand; set `OPENAI_API_BASE` to use an OpenAI-compatible server):
+```bash
+bash ${CLAUDE_SKILL_DIR}/scripts/run.sh synthesize_audio.py output/presentation.pptx output/audio/ --engine openai --voice alloy --script output/tts_script.txt
 ```
 
 ### TTS Failure Handling

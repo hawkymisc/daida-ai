@@ -80,7 +80,7 @@ bash <plugin-dir>/skills/relief-pitcher-ai/scripts/setup.sh
 2. **受众**：面向谁演讲
 3. **时长**：几分钟（默认 5 分钟）
 4. **模板**：`tech` / `casual` / `formal`
-5. **TTS 引擎**：`edge`（默认）/ `voicevox`
+5. **TTS 引擎**：`edge`（默认）/ `voicevox` / `elevenlabs` / `openai`
 
 全自动执行完整流程：大纲 → 幻灯片 → 演讲稿 → 语音合成 → 音频嵌入 → 幻灯片放映设置。
 
@@ -120,6 +120,8 @@ bash <plugin-dir>/skills/relief-pitcher-ai/scripts/setup.sh
 |------|------|------|
 | edge-tts | Microsoft Edge TTS，无需安装，支持多语言 | 默认 |
 | VOICEVOX | 角色语音（如 Zundamon），日语 TTS 引擎 | 需要运行 [VOICEVOX Engine](https://voicevox.hiroshiba.jp/) |
+| ElevenLabs | 高品质云端 TTS，支持使用用户自建 Voice Clone 的 `voice_id`（通过 `--voice` 指定） | 需要环境变量 `ELEVENLABS_API_KEY` |
+| OpenAI | OpenAI Text-to-Speech (`tts-1` / `tts-1-hd`)。也可接入提供自定义音色的 OpenAI 兼容服务器 | 需要环境变量 `OPENAI_API_KEY` |
 
 ## 验证
 
